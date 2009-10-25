@@ -1,0 +1,2 @@
+{alias, erlotr, "@PATH@/lib/erlotr"}.
+{suites, erlotr, [otr_message_SUITE]}.
