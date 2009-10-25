@@ -30,13 +30,13 @@ decode(M) -> {ok, parse(M)}.
 %F{{{ encode/1
 encode(#otr_msg{type = query_v2}) -> {ok, <<"?OTRv2?">>};
 encode(#otr_msg{type = error, value = ErrorMsg}) ->
-    {ok, <<"?OTR Error:", ErrorMsg>>};
+    {ok, list_to_binary("?OTR Error:"  ++ ErrorMsg)};
 encode(#otr_msg{type = dh_commit, 
                 value = #otr_msg_dh_commit{enc_gx = EncGx, 
-		                           mac_gx = MacGx}}) 
-    when size(MacGx) == 20 ->
+		                           mac_gx = MacGx}}) ->
     Enc = base64:encode(<<2:16, ?TYPE_DH_COMMIT, (size(EncGx)):32, 
-                          EncGx/binary, MacGx/binary>>),
+                          EncGx/binary, (size(MacGx)):32, 
+			  MacGx/binary>>),
     {ok, <<"?OTR:", Enc/binary, ".">>}; 
 encode(#otr_msg{type = dh_key, 
                 value = #otr_msg_dh_key{mpi_gy = MpiGy}}) ->
