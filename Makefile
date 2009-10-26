@@ -49,4 +49,4 @@ test.spec: test.spec.in
 	cat test.spec.in | sed s%@PATH@%${PWD}% > test.spec
 
 test: logdir build test.spec
-	${RUN_TEST} ${ERL_PA} -spec test.spec -logdir ${PWD}/log 
+	${RUN_TEST} ${ERL_PA} -spec test.spec -logdir ${PWD}/log -cover cover.spec

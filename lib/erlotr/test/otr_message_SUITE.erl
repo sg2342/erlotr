@@ -1,5 +1,7 @@
 -module(otr_message_SUITE).
 
+-author("Stefan Grundmann <sg2342@googlemail.com>").
+
 -compile(export_all).
 
 -include_lib("erlotr/include/otr_message.hrl").
@@ -14,37 +16,89 @@ end_per_testcase(_TestCase, Config) -> Config.
 
 all() ->
     [decode_plain, decode_query_v1, decode_query_v2,
-     decode_query_v1_or_v2, decode_error, decode_dh_commit,
-     decode_dh_key, decode_reveal_signature,
-     decode_signature, decode_data_1, decode_data_2,
-     encode_query, encode_error, encode_dh_commit,
-     encode_dh_key, encode_reveal_signature,
-     encode_signature, encode_data_1, encode_data_2].
+     decode_query_v1_or_v2, decode_query_unsupported,
+     decode_tagged_whitespace_v1,
+     decode_tagged_whitespace_v2,
+     decode_tagged_whitespace_v1_or_v2, decode_error,
+     decode_dh_commit, decode_dh_key,
+     decode_reveal_signature, decode_signature,
+     decode_data_1, decode_data_2, decode_fail, encode_query,
+     encode_error, encode_dh_commit, encode_dh_key,
+     encode_reveal_signature, encode_signature,
+     encode_data_1, encode_data_2,
+     fragment_encode_fragmentation_not_needed,
+     fragment_encode_1, fragment_decode_1, fragment_decode_2,
+     fragment_decode_invalid_fragment ].
 
 %F{{{ decode_...
 
 decode_plain(_Config) -> %F{{{
-    {ok, #otr_msg{type = plain}} =
-	otr_message:decode(<<"foo">>). %}}}F
+    ct:comment("decode plain (no otr) messages "),
+    R = {ok, #otr_msg{type = plain}},
+    R =
+	otr_message:decode(<<"?OTRvstuff and no closing question mark">>),
+    R =
+	otr_message:decode(<<"starting tag of tagged whitespace but "
+			     "no v1 or v2 tag after it \t  \t\t\t\t "
+			     "\t \t \t   \t">>),
+    R = otr_message:decode(<<"foo">>). %}}}F
 
 decode_query_v1(_Config) -> %F{{{
+    ct:comment("decode otr queries (v1 only)"),
     R = {ok, #otr_msg{type = query_v1}},
     R = otr_message:decode(<<"?OTR?">>),
     R = otr_message:decode(<<"?OTR?v">>),
     R = otr_message:decode(<<"?OTR?v34567?">>). %}}}F
 
 decode_query_v2(_Config) -> %F{{{
+    ct:comment("decode otr queries (v2 only)"),
     R = {ok, #otr_msg{type = query_v2}},
     R = otr_message:decode(<<"?OTRv2?">>),
     R = otr_message:decode(<<"?OTRv45672?">>). %}}}F
 
 decode_query_v1_or_v2(_Config) -> %F{{{
+    ct:comment("decode otr  queries (v2 or v1)"),
     R = {ok, #otr_msg{type = query_v1_or_v2}},
     R = otr_message:decode(<<"?OTR?v2?">>),
     R = otr_message:decode(<<"?OTR?v34586792?">>),
     R = otr_message:decode(<<"?OTR?v34525534?">>). %}}}F
 
+decode_query_unsupported(_Config) -> %F{{{
+    ct:comment("decode otr queries (unsupported versions "
+	       ">2)"),
+    R = {ok, #otr_msg{type = query_unsupported}},
+    R = otr_message:decode(<<"?OTRv5?">>),
+    R = otr_message:decode(<<"?OTRv516789?">>),
+    R = otr_message:decode(<<"?OTRvfoobar?">>).
+
+%}}}F
+
+decode_tagged_whitespace_v1(_Config) -> %F{{{
+    ct:comment("decode tagget whitespace message (v1 "
+	       "only)"),
+    M = <<"bla blub and somthing else  \t  \t\t\t\t "
+	  "\t \t \t   \t \t  \t  ">>,
+    R = {ok, #otr_msg{type = tagged_whitespace_v1}},
+    R = otr_message:decode(M).%}}}F
+
+decode_tagged_whitespace_v2(_Config) -> %F{{{
+    ct:comment("decode tagget whitespace message (v2 "
+	       "only)"),
+    M = <<"starting stuff \t  \t\t\t\t \t \t \t "
+	  "   \t\t  \t foo">>,
+    R = {ok, #otr_msg{type = tagged_whitespace_v2}},
+    R = otr_message:decode(M).  %}}}F
+
+decode_tagged_whitespace_v1_or_v2(_Config) -> %F{{{
+    ct:comment("decode tagget whitespace messages(v1 "
+	       "or v2 )"),
+    M = <<"bla blub \t  \t\t\t\t \t \t \t   \t "
+	  "\t  \t   \t\t  \t  dsds">>,
+    R = {ok, #otr_msg{type = tagged_whitespace_v1_or_v2}},
+    R = otr_message:decode(M).%}}}F
+
 decode_error(_Config) -> %F{{{
+    ct:comment("decode otr error message"),
     ErrorMsg = "some error message",
     M = erlang:concat_binary([<<"?OTR Error:">>,
 			      erlang:list_to_binary(ErrorMsg)]),
@@ -52,6 +106,7 @@ decode_error(_Config) -> %F{{{
     R = otr_message:decode(M). %}}}F
 
 decode_dh_commit(_Config) -> %F{{{
+    ct:comment("decode otr dh_commit message"),
     M = <<"?OTR:AAICAAAAxCwNbeDb5N6sHCjimu6LwWDUcNalKWnf"
 	  "1QR0B2iCT/WchV4lywHavNWmmT1KAvyogIeYZPv+pFg4S"
 	  "FBazbrGgpMoC7YFr8kJskrHSdy4d9UnttYV3+1UGenXgl"
@@ -87,6 +142,7 @@ decode_dh_commit(_Config) -> %F{{{
     R = otr_message:decode(M). %}}}F
 
 decode_dh_key(_Config) -> %F{{{
+    ct:comment("decode otr dh_key message"),
     M = <<"?OTR:AAIKAAAAwBlpxOqNOmK6dPYVxiO7IWs+V7YKHJ+B"
 	  "kzThBOKapZKJU4YhfGZbq/+BbWB+vW1wDBLt19LAv2E1s"
 	  "kifRU8CLSlCzESbTlrnF/rk4cKj6NmAiaB7EDXV/L5bjX"
@@ -117,6 +173,7 @@ decode_dh_key(_Config) -> %F{{{
     R = otr_message:decode(M). %}}}F
 
 decode_reveal_signature(_Config) -> %F{{{
+    ct:comment("decode otr reveal_signature message"),
     M = <<"?OTR:AAIRAAAAEOgmDPnVX65cXR6XKmnqf18AAAHSrBnG"
 	  "I8WgWW0WfP2+O3kdWPRN3VbTzFiipWGyfqK7EBULIzj5c"
 	  "g39gixRTEu0YHfr4haGhA4ngc0vyRsxiViCXy/o1lRd7X"
@@ -186,6 +243,7 @@ decode_reveal_signature(_Config) -> %F{{{
     R = otr_message:decode(M).  %}}}F
 
 decode_signature(_Config) -> %F{{{
+    ct:comment("decode otr signature message"),
     M = <<"?OTR:AAISAAAB0n3kDM4JfUWOnSwxHjqmli+gpHt+ePIO"
 	  "e3JFys7tuJ5ydfoQbIpAB12ItXx5WaN8WtJnGT9tEXm2S"
 	  "ERhu1ymXcL4mCiO2fPPapSMUDOJvqu2oCANMWJCF7dvAC"
@@ -251,6 +309,7 @@ decode_signature(_Config) -> %F{{{
     R = otr_message:decode(M). %}}}F
 
 decode_data_1(_Config) -> %F{{{
+    ct:comment("decode otr data message"),
     M = <<"?OTR:AAIDAAAAAAEAAAABAAAAwNrWiTNVRLbfXoektbMU"
 	  "n9WfuJfT/OKEeThJum1VUgJOe40dlBDuTYOW+qhAEK7m9"
 	  "9m7+fdbAeHdPKR14BQ5cOG7w2e0a37essAQPp4r105vne"
@@ -291,6 +350,8 @@ decode_data_1(_Config) -> %F{{{
     R = otr_message:decode(M).  %}}}F
 
 decode_data_2(_Config) -> %F{{{
+    ct:comment("decode otr data message that includes "
+	       "old mac keys"),
     M = <<"?OTR:AAIDAAAAAAIAAAADAAAAwJamDA7Dg2QNRCc+4gJR"
 	  "3H2tXB/EHKOBGb7kDVFTJItn+Djs6zh4hy7PPCrYAVr81"
 	  "d9qaccXkaAER1TAvKmL/1VwYHeedRU97wEc4yc5ruiUcJ"
@@ -333,20 +394,39 @@ decode_data_2(_Config) -> %F{{{
 				    old_mac_keys = OMC}}},
     R = otr_message:decode(M).  %}}}F
 
+decode_fail(_Config) -> %F{{{
+    ct:comment("try to decode invalid otr messages and "
+	       "fail"),
+    M1 = <<"?OTR:the base64 decode will fail.">>,
+    M2 = <<"?OTR:message does not end with a dot">>,
+    M2 = <<"?OTR:message does not end with a dot">>,
+    M3 =
+	<<"?OTR:c29tZSByYW5kb20gc3R1ZmY=.">>, % invalid encoded message
+    M4 = <<"?OTR,1,8,no ending comma in fragment">>,
+    M5 = <<"?OTR,1,2,3more than 3 commas in fragment,4,">>,
+    {error, parse_exception} = otr_message:decode(M1),
+    {error, parse_exception} = otr_message:decode(M2),
+    {error, parse_exception} = otr_message:decode(M3),
+    {error, parse_exception} = otr_message:decode(M4),
+    {error, parse_exception} = otr_message:decode(M5).%}}}F
+
 %}}}F
 
 %F{{{ encode_...
 
 encode_query(_Config) -> %F{{{
+    ct:comment("encode otr query message"),
     {ok, <<"?OTRv2?">>} = otr_message:encode(#otr_msg{type =
 							  query_v2}).%}}}F
 
 encode_error(_Config) -> %F{{{
+    ct:comment("encode otr error message"),
     {ok, <<"?OTR Error:blablub">>} =
 	otr_message:encode(#otr_msg{type = error,
 				    value = "blablub"}). %}}}F
 
 encode_dh_commit(_Config) -> %F{{{
+    ct:comment("encode otr dh_commit message"),
     R = <<"?OTR:AAICAAAAxCwNbeDb5N6sHCjimu6LwWDUcNalKWnf"
 	  "1QR0B2iCT/WchV4lywHavNWmmT1KAvyogIeYZPv+pFg4S"
 	  "FBazbrGgpMoC7YFr8kJskrHSdy4d9UnttYV3+1UGenXgl"
@@ -381,6 +461,7 @@ encode_dh_commit(_Config) -> %F{{{
     {ok, R} = otr_message:encode(Q). %}}}F
 
 encode_dh_key(_Config) -> %F{{{
+    ct:comment("encode otr dh_key message"),
     R = <<"?OTR:AAIKAAAAwBlpxOqNOmK6dPYVxiO7IWs+V7YKHJ+B"
 	  "kzThBOKapZKJU4YhfGZbq/+BbWB+vW1wDBLt19LAv2E1s"
 	  "kifRU8CLSlCzESbTlrnF/rk4cKj6NmAiaB7EDXV/L5bjX"
@@ -410,6 +491,7 @@ encode_dh_key(_Config) -> %F{{{
     {ok, R} = otr_message:encode(Q). %}}}F
 
 encode_reveal_signature(_Config) -> %F{{{
+    ct:comment("encode otr revealed_signature message"),
     R = <<"?OTR:AAIRAAAAEOgmDPnVX65cXR6XKmnqf18AAAHSrBnG"
 	  "I8WgWW0WfP2+O3kdWPRN3VbTzFiipWGyfqK7EBULIzj5c"
 	  "g39gixRTEu0YHfr4haGhA4ngc0vyRsxiViCXy/o1lRd7X"
@@ -478,6 +560,7 @@ encode_reveal_signature(_Config) -> %F{{{
     {ok, R} = otr_message:encode(Q).  %}}}F
 
 encode_signature(_Config) -> %F{{{
+    ct:comment("encode otr signature message"),
     R = <<"?OTR:AAISAAAB0n3kDM4JfUWOnSwxHjqmli+gpHt+ePIO"
 	  "e3JFys7tuJ5ydfoQbIpAB12ItXx5WaN8WtJnGT9tEXm2S"
 	  "ERhu1ymXcL4mCiO2fPPapSMUDOJvqu2oCANMWJCF7dvAC"
@@ -542,6 +625,7 @@ encode_signature(_Config) -> %F{{{
     {ok, R} = otr_message:encode(Q). %}}}F
 
 encode_data_1(_Config) -> %F{{{
+    ct:comment("encode otr data message"),
     R = <<"?OTR:AAIDAAAAAAEAAAABAAAAwNrWiTNVRLbfXoektbMU"
 	  "n9WfuJfT/OKEeThJum1VUgJOe40dlBDuTYOW+qhAEK7m9"
 	  "9m7+fdbAeHdPKR14BQ5cOG7w2e0a37essAQPp4r105vne"
@@ -581,6 +665,8 @@ encode_data_1(_Config) -> %F{{{
     {ok, R} = otr_message:encode(Q).  %}}}F
 
 encode_data_2(_Config) -> %F{{{
+    ct:comment("encode otr data message that includes "
+	       "old mac keys"),
     R = <<"?OTR:AAIDAAAAAAIAAAADAAAAwJamDA7Dg2QNRCc+4gJR"
 	  "3H2tXB/EHKOBGb7kDVFTJItn+Djs6zh4hy7PPCrYAVr81"
 	  "d9qaccXkaAER1TAvKmL/1VwYHeedRU97wEc4yc5ruiUcJ"
@@ -621,6 +707,213 @@ encode_data_2(_Config) -> %F{{{
 				   enc_data = EncData, mac = Mac,
 				   old_mac_keys = OMC}},
     {ok, R} = otr_message:encode(Q).  %}}}F
+
+%}}}F
+
+%F{{{  fragment_encode...
+
+fragment_encode_fragmentation_not_needed(_Config) -> %F{{{
+    ct:comment("encode otr_msg_dh_commit with maximum "
+	       "fragment size of 1024"),
+    R = <<"?OTR:AAICAAAAxCwNbeDb5N6sHCjimu6LwWDUcNalKWnf"
+	  "1QR0B2iCT/WchV4lywHavNWmmT1KAvyogIeYZPv+pFg4S"
+	  "FBazbrGgpMoC7YFr8kJskrHSdy4d9UnttYV3+1UGenXgl"
+	  "2ECfyOwj7V/G2QwiPunLtLuFz94rk7jhMbNuZf4WY0r12"
+	  "Nw/QeYbTRt2rRk+XTKv/wiWyq9zxfofhqsrP3UW+koMYb"
+	  "iDQmawgB/qzKn6BAWrar2heFYPdFUDnvRlIGwdDgI2EG9"
+	  "nfbRqwAAAAgf5bMB4oYtPAqDPD+eyTujEw7fXKmQz3Gcl"
+	  "wYFdlrVmk=.">>,
+    EncGx = <<44, 13, 109, 224, 219, 228, 222, 172, 28, 40,
+	      226, 154, 238, 139, 193, 96, 212, 112, 214, 165, 41,
+	      105, 223, 213, 4, 116, 7, 104, 130, 79, 245, 156, 133,
+	      94, 37, 203, 1, 218, 188, 213, 166, 153, 61, 74, 2, 252,
+	      168, 128, 135, 152, 100, 251, 254, 164, 88, 56, 72, 80,
+	      90, 205, 186, 198, 130, 147, 40, 11, 182, 5, 175, 201,
+	      9, 178, 74, 199, 73, 220, 184, 119, 213, 39, 182, 214,
+	      21, 223, 237, 84, 25, 233, 215, 130, 93, 132, 9, 252,
+	      142, 194, 62, 213, 252, 109, 144, 194, 35, 238, 156,
+	      187, 75, 184, 92, 253, 226, 185, 59, 142, 19, 27, 54,
+	      230, 95, 225, 102, 52, 175, 93, 141, 195, 244, 30, 97,
+	      180, 209, 183, 106, 209, 147, 229, 211, 42, 255, 240,
+	      137, 108, 170, 247, 60, 95, 161, 248, 106, 178, 179,
+	      247, 81, 111, 164, 160, 198, 27, 136, 52, 38, 107, 8, 1,
+	      254, 172, 202, 159, 160, 64, 90, 182, 171, 218, 23, 133,
+	      96, 247, 69, 80, 57, 239, 70, 82, 6, 193, 208, 224, 35,
+	      97, 6, 246, 119, 219, 70, 172>>,
+    MacGx = <<127, 150, 204, 7, 138, 24, 180, 240, 42, 12,
+	      240, 254, 123, 36, 238, 140, 76, 59, 125, 114, 166, 67,
+	      61, 198, 114, 92, 24, 21, 217, 107, 86, 105>>,
+    Q = #otr_msg{type = dh_commit,
+		 value =
+		     #otr_msg_dh_commit{enc_gx = EncGx, mac_gx = MacGx}},
+    {ok, R} = otr_message:encode(Q, 1024).
+
+%}}}F
+
+fragment_encode_1(_Config) -> %F{{{
+    ct:comment("encode otr_msg_dh_commit with maximum "
+	       "fragment size of 45"),
+    R = [<<"?OTR,1,8,?OTR:AAICAAAAxCwNbeDb5N6sHCjimu6LwWD"
+	   "UcNalKWnf,">>,
+	 <<"?OTR,2,8,1QR0B2iCT/WchV4lywHavNWmmT1KAvyogIeY"
+	   "ZPv+pFg4S,">>,
+	 <<"?OTR,3,8,FBazbrGgpMoC7YFr8kJskrHSdy4d9UnttYV3"
+	   "+1UGenXgl,">>,
+	 <<"?OTR,4,8,2ECfyOwj7V/G2QwiPunLtLuFz94rk7jhMbNu"
+	   "Zf4WY0r12,">>,
+	 <<"?OTR,5,8,Nw/QeYbTRt2rRk+XTKv/wiWyq9zxfofhqsrP"
+	   "3UW+koMYb,">>,
+	 <<"?OTR,6,8,iDQmawgB/qzKn6BAWrar2heFYPdFUDnvRlIG"
+	   "wdDgI2EG9,">>,
+	 <<"?OTR,7,8,nfbRqwAAAAgf5bMB4oYtPAqDPD+eyTujEw7f"
+	   "XKmQz3Gcl,">>,
+	 <<"?OTR,8,8,wYFdlrVmk=.,">>],
+    EncGx = <<44, 13, 109, 224, 219, 228, 222, 172, 28, 40,
+	      226, 154, 238, 139, 193, 96, 212, 112, 214, 165, 41,
+	      105, 223, 213, 4, 116, 7, 104, 130, 79, 245, 156, 133,
+	      94, 37, 203, 1, 218, 188, 213, 166, 153, 61, 74, 2, 252,
+	      168, 128, 135, 152, 100, 251, 254, 164, 88, 56, 72, 80,
+	      90, 205, 186, 198, 130, 147, 40, 11, 182, 5, 175, 201,
+	      9, 178, 74, 199, 73, 220, 184, 119, 213, 39, 182, 214,
+	      21, 223, 237, 84, 25, 233, 215, 130, 93, 132, 9, 252,
+	      142, 194, 62, 213, 252, 109, 144, 194, 35, 238, 156,
+	      187, 75, 184, 92, 253, 226, 185, 59, 142, 19, 27, 54,
+	      230, 95, 225, 102, 52, 175, 93, 141, 195, 244, 30, 97,
+	      180, 209, 183, 106, 209, 147, 229, 211, 42, 255, 240,
+	      137, 108, 170, 247, 60, 95, 161, 248, 106, 178, 179,
+	      247, 81, 111, 164, 160, 198, 27, 136, 52, 38, 107, 8, 1,
+	      254, 172, 202, 159, 160, 64, 90, 182, 171, 218, 23, 133,
+	      96, 247, 69, 80, 57, 239, 70, 82, 6, 193, 208, 224, 35,
+	      97, 6, 246, 119, 219, 70, 172>>,
+    MacGx = <<127, 150, 204, 7, 138, 24, 180, 240, 42, 12,
+	      240, 254, 123, 36, 238, 140, 76, 59, 125, 114, 166, 67,
+	      61, 198, 114, 92, 24, 21, 217, 107, 86, 105>>,
+    Q = #otr_msg{type = dh_commit,
+		 value =
+		     #otr_msg_dh_commit{enc_gx = EncGx, mac_gx = MacGx}},
+    {fragmented, R} = otr_message:encode(Q, 45). %}}}F
+
+%}}}F
+
+%F{{{  fragment_decode...
+
+fragment_decode_1(_Config) -> %F{{{
+    ct:comment("assemble otr_msg_dh_commit from 8 fragments"),
+    M = [<<"?OTR,1,8,?OTR:AAICAAAAxCwNbeDb5N6sHCjimu6LwWD"
+	   "UcNalKWnf,">>,
+	 <<"?OTR,2,8,1QR0B2iCT/WchV4lywHavNWmmT1KAvyogIeY"
+	   "ZPv+pFg4S,">>,
+	 <<"?OTR,3,8,FBazbrGgpMoC7YFr8kJskrHSdy4d9UnttYV3"
+	   "+1UGenXgl,">>,
+	 <<"?OTR,4,8,2ECfyOwj7V/G2QwiPunLtLuFz94rk7jhMbNu"
+	   "Zf4WY0r12,">>,
+	 <<"?OTR,5,8,Nw/QeYbTRt2rRk+XTKv/wiWyq9zxfofhqsrP"
+	   "3UW+koMYb,">>,
+	 <<"?OTR,6,8,iDQmawgB/qzKn6BAWrar2heFYPdFUDnvRlIG"
+	   "wdDgI2EG9,">>,
+	 <<"?OTR,7,8,nfbRqwAAAAgf5bMB4oYtPAqDPD+eyTujEw7f"
+	   "XKmQz3Gcl,">>,
+	 <<"?OTR,8,8,wYFdlrVmk=.,">>],
+    EncGx = <<44, 13, 109, 224, 219, 228, 222, 172, 28, 40,
+	      226, 154, 238, 139, 193, 96, 212, 112, 214, 165, 41,
+	      105, 223, 213, 4, 116, 7, 104, 130, 79, 245, 156, 133,
+	      94, 37, 203, 1, 218, 188, 213, 166, 153, 61, 74, 2, 252,
+	      168, 128, 135, 152, 100, 251, 254, 164, 88, 56, 72, 80,
+	      90, 205, 186, 198, 130, 147, 40, 11, 182, 5, 175, 201,
+	      9, 178, 74, 199, 73, 220, 184, 119, 213, 39, 182, 214,
+	      21, 223, 237, 84, 25, 233, 215, 130, 93, 132, 9, 252,
+	      142, 194, 62, 213, 252, 109, 144, 194, 35, 238, 156,
+	      187, 75, 184, 92, 253, 226, 185, 59, 142, 19, 27, 54,
+	      230, 95, 225, 102, 52, 175, 93, 141, 195, 244, 30, 97,
+	      180, 209, 183, 106, 209, 147, 229, 211, 42, 255, 240,
+	      137, 108, 170, 247, 60, 95, 161, 248, 106, 178, 179,
+	      247, 81, 111, 164, 160, 198, 27, 136, 52, 38, 107, 8, 1,
+	      254, 172, 202, 159, 160, 64, 90, 182, 171, 218, 23, 133,
+	      96, 247, 69, 80, 57, 239, 70, 82, 6, 193, 208, 224, 35,
+	      97, 6, 246, 119, 219, 70, 172>>,
+    MacGx = <<127, 150, 204, 7, 138, 24, 180, 240, 42, 12,
+	      240, 254, 123, 36, 238, 140, 76, 59, 125, 114, 166, 67,
+	      61, 198, 114, 92, 24, 21, 217, 107, 86, 105>>,
+    R = #otr_msg{type = dh_commit,
+		 value =
+		     #otr_msg_dh_commit{enc_gx = EncGx, mac_gx = MacGx}},
+    {ok, R} = lists:foldl(fun (Mf, Acc) ->
+				  case otr_message:decode(Mf, Acc) of
+				    {fragment, F} -> F;
+				    Else -> Else
+				  end
+			  end,
+			  #otr_fragment{},
+			  M).%}}}F
+
+fragment_decode_2(_Config) -> %F{{{
+    ct:comment("assemble otr_msg_dh_commit from 8 fragments "
+	       "after trying to assemble an incomplete "
+	       "message"),
+    M = [<<"?OTR,1,99,the first two fragments will "
+	   "be,">>,
+	 <<"?OTR,2,99,discarded,">>,
+	 <<"?OTR,1,8,?OTR:AAICAAAAxCwNbeDb5N6sHCjimu6LwWD"
+	   "UcNalKWnf,">>,
+	 <<"?OTR,2,8,1QR0B2iCT/WchV4lywHavNWmmT1KAvyogIeY"
+	   "ZPv+pFg4S,">>,
+	 <<"?OTR,3,8,FBazbrGgpMoC7YFr8kJskrHSdy4d9UnttYV3"
+	   "+1UGenXgl,">>,
+	 <<"?OTR,4,8,2ECfyOwj7V/G2QwiPunLtLuFz94rk7jhMbNu"
+	   "Zf4WY0r12,">>,
+	 <<"?OTR,5,8,Nw/QeYbTRt2rRk+XTKv/wiWyq9zxfofhqsrP"
+	   "3UW+koMYb,">>,
+	 <<"?OTR,6,8,iDQmawgB/qzKn6BAWrar2heFYPdFUDnvRlIG"
+	   "wdDgI2EG9,">>,
+	 <<"?OTR,7,8,nfbRqwAAAAgf5bMB4oYtPAqDPD+eyTujEw7f"
+	   "XKmQz3Gcl,">>,
+	 <<"?OTR,8,8,wYFdlrVmk=.,">>],
+    EncGx = <<44, 13, 109, 224, 219, 228, 222, 172, 28, 40,
+	      226, 154, 238, 139, 193, 96, 212, 112, 214, 165, 41,
+	      105, 223, 213, 4, 116, 7, 104, 130, 79, 245, 156, 133,
+	      94, 37, 203, 1, 218, 188, 213, 166, 153, 61, 74, 2, 252,
+	      168, 128, 135, 152, 100, 251, 254, 164, 88, 56, 72, 80,
+	      90, 205, 186, 198, 130, 147, 40, 11, 182, 5, 175, 201,
+	      9, 178, 74, 199, 73, 220, 184, 119, 213, 39, 182, 214,
+	      21, 223, 237, 84, 25, 233, 215, 130, 93, 132, 9, 252,
+	      142, 194, 62, 213, 252, 109, 144, 194, 35, 238, 156,
+	      187, 75, 184, 92, 253, 226, 185, 59, 142, 19, 27, 54,
+	      230, 95, 225, 102, 52, 175, 93, 141, 195, 244, 30, 97,
+	      180, 209, 183, 106, 209, 147, 229, 211, 42, 255, 240,
+	      137, 108, 170, 247, 60, 95, 161, 248, 106, 178, 179,
+	      247, 81, 111, 164, 160, 198, 27, 136, 52, 38, 107, 8, 1,
+	      254, 172, 202, 159, 160, 64, 90, 182, 171, 218, 23, 133,
+	      96, 247, 69, 80, 57, 239, 70, 82, 6, 193, 208, 224, 35,
+	      97, 6, 246, 119, 219, 70, 172>>,
+    MacGx = <<127, 150, 204, 7, 138, 24, 180, 240, 42, 12,
+	      240, 254, 123, 36, 238, 140, 76, 59, 125, 114, 166, 67,
+	      61, 198, 114, 92, 24, 21, 217, 107, 86, 105>>,
+    R = #otr_msg{type = dh_commit,
+		 value =
+		     #otr_msg_dh_commit{enc_gx = EncGx, mac_gx = MacGx}},
+    {ok, R} = lists:foldl(fun (Mf, Acc) ->
+				  case otr_message:decode(Mf, Acc) of
+				    {fragment, F} -> F;
+				    Else -> Else
+				  end
+			  end,
+			  #otr_fragment{},
+			  M).%}}}F
+
+fragment_decode_invalid_fragment(_Config) -> %F{{{
+    ct:comment("try to assemble out of order fragments"),
+    M = [<<"?OTR,1,88,first fragment,">>,
+	 <<"?OTR,2,88,second fragment,">>,
+	 <<"?OTR,4,88,thir fragment is missing!,">>],
+    R = {error, invalid_fragment},
+    R = lists:foldl(fun (Mf, Acc) ->
+			    case otr_message:decode(Mf, Acc) of
+			      {fragment, F} -> F;
+			      Else -> Else
+			    end
+		    end,
+		    #otr_fragment{},
+		    M).%}}}F
 
 %}}}F
 

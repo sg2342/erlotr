@@ -19,3 +19,4 @@
 		       mac,
 		       old_mac_keys}).
 
+-record(otr_fragment, {k = 0, n = 0, f = <<>>}).
