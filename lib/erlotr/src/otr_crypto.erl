@@ -2,9 +2,21 @@
 
 -author("Stefan Grundmann <sg2342@googlemail.com>").
 
--export([aes_ctr_128_encrypt/3, aes_ctr_128_decrypt/3]).
+-export([aes_ctr_128_decrypt/3, aes_ctr_128_encrypt/3,
+	 sha1/1, sha1/3]).
 
+%F{{{ sha1...
+sha1(Data) -> crypto:sha(Data).
 
+sha1(Data, Offset, Length)
+    when is_binary(Data), Offset > 0, Length > 0,
+	 size(Data) - (Offset + Length) > 0 ->
+    <<_:Offset/binary, Part:Length/binary, _/binary>> =
+	Data,
+    crypto:sha(Part).
+%}}}F
+
+%F{{{ aes_ctr_128 ...
 aes_ctr_128_decrypt(Key, Nonce, Data) ->
     aes_ctr_128_encrypt(Key, Nonce, Data).
 
@@ -13,9 +25,8 @@ aes_ctr_128_encrypt(Key, Nonce, Data)
 	 is_binary(Data) ->
     do_aes_ctr_128(Key, {Nonce, 0}, Data, <<>>).
 
-
 %
-% abuse crypto:aes_cfb_128_encrypt/3 
+% abuse crypto:aes_cfb_128_encrypt/3
 % by feeding it 16 byte blocks
 %
 do_aes_ctr_128(_, _, <<>>, Ciphertext) -> Ciphertext;
@@ -36,3 +47,5 @@ do_aes_ctr_128(Key, {Nonce, Counter}, Plaintext,
 					 PtBlock),
     do_aes_ctr_128(Key, {Nonce, Counter + 1}, Tail,
 		   <<Ciphertext/binary, CtBlock/binary>>).
+
+%}}}F
