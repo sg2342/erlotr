@@ -8,6 +8,8 @@
 
 -include("Sha256TestVectors.hrl").
 
+-include("HMACTestVectors.hrl").
+
 -compile(export_all).
 
 
@@ -34,7 +36,8 @@ end_per_testcase(_TestCase, Config) -> Config.
 all() -> [aes_ctr_128_1, aes_ctr_128_2, aes_ctr_128_3, 
 	  aes_ctr_128_4, aes_ctr_128_5, aes_ctr_128_6, 
 	  sha1_1, sha1_2, sha1_3, sha256_1, sha256_2, 
-	  sha256_3].
+	  sha256_3, sha1HMAC_1, sha1HMAC_2, sha1HMAC_3,
+	  sha256HMAC_1, sha256HMAC_2, sha256HMAC_3].
 
 %F{{{ aes_ctr_128_...
 
@@ -111,5 +114,45 @@ sha256_3(_Config) ->
     ct:comment("SHA256 testvector #3 (  146 bytes message, offset 26, lenght 64)"),
     {Offset, Length, Msg, MD} = ?SHA256TestVector3,
     MD = otr_crypto:sha256(Msg, Offset, Length), ok.
+
+%}}}F
+
+%F{{{ ...HMAC...
+sha1HMAC_1(_Config) ->
+    ct:comment("Sha1HMAC testvector #1 (Klen = 8, Tlen = 10)"),
+    {Key, Data, Mac} = ?HMACTestVector1,
+    SzMac = size(Mac),
+    <<Mac:SzMac/binary, _/binary>>  = otr_crypto:sha1HMAC(Key, Data), ok.
+
+sha1HMAC_2(_Config) ->
+    ct:comment("Sha1HMAC testvector #2 (Klen = 128, Tlen = 12)"),
+    {Key, Data, Mac} = ?HMACTestVector2,
+    SzMac = size(Mac),
+    <<Mac:SzMac/binary, _/binary>>  = otr_crypto:sha1HMAC(Key, Data), ok.
+
+sha1HMAC_3(_Config) ->
+    ct:comment("Sha1HMAC testvector #3 (Klen = 25  ,Tlen = 12)"),
+    {Key, Data, Mac} = ?HMACTestVector3,
+    SzMac = size(Mac),
+    <<Mac:SzMac/binary, _/binary>>  = otr_crypto:sha1HMAC(Key, Data), ok.
+
+
+sha256HMAC_1(_Config) ->
+    ct:comment("Sha256HMAC testvector #1 (Klen = 8, Tlen = 16)"),
+    {Key, Data, Mac} = ?HMACTestVector4,
+    SzMac = size(Mac),
+    <<Mac:SzMac/binary, _/binary>>  = otr_crypto:sha256HMAC(Key, Data), ok.
+
+sha256HMAC_2(_Config) ->
+    ct:comment("Sha256HMAC testvector #2 (Klen = 400, Tlen = 24)"),
+    {Key, Data, Mac} = ?HMACTestVector5,
+    SzMac = size(Mac),
+    <<Mac:SzMac/binary, _/binary>>  = otr_crypto:sha256HMAC(Key, Data), ok.
+
+sha256HMAC_3(_Config) ->
+    ct:comment("Sha256HMAC testvector #3 (Klen = 64, Tlen = 16)"),
+    {Key, Data, Mac} = ?HMACTestVector6,
+    SzMac = size(Mac),
+    <<Mac:SzMac/binary, _/binary>>  = otr_crypto:sha256HMAC(Key, Data), ok.
 
 %}}}F

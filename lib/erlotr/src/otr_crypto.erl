@@ -3,7 +3,26 @@
 -author("Stefan Grundmann <sg2342@googlemail.com>").
 
 -export([aes_ctr_128_decrypt/3, aes_ctr_128_encrypt/3,
-	 sha1/1, sha1/3, sha256/1, sha256/3]).
+	 sha1/1, sha1/3, sha1HMAC/2, sha256/1, sha256/3,
+	 sha256HMAC/2]).
+
+%F{{{ ...HMAC...
+sha1HMAC(Key, Data) -> crypto:sha_mac(Key, Data).
+
+sha256HMAC(Key, Data) when size(Key) > 64 ->
+    HK = sha256(Key),
+    sha256HMAC(<<HK/binary, 0:(32 bsl 3)>>, Data);
+sha256HMAC(Key, Data) when size(Key) < 64 ->
+    sha256HMAC(<<Key/binary, 0:(64 - size(Key) bsl 3)>>,
+	       Data);
+sha256HMAC(Key, Data) ->
+    KxorIpad = list_to_binary([V bxor 16#36
+			       || V <- binary_to_list(Key)]),
+    KxorOpad = list_to_binary([V bxor 16#5c
+			       || V <- binary_to_list(Key)]),
+    H1 = sha256(<<KxorIpad/binary, Data/binary>>),
+    sha256(<<KxorOpad/binary, H1/binary>>).
+%}}}F
 
 %F{{{ sha1...
 sha1(Data) -> crypto:sha(Data).
@@ -60,3 +79,4 @@ do_aes_ctr_128(Key, {Nonce, Counter}, Plaintext,
 		   <<Ciphertext/binary, CtBlock/binary>>).
 
 %}}}F
+
