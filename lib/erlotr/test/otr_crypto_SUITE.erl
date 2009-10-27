@@ -6,6 +6,8 @@
 
 -include("Sha1TestVectors.hrl").
 
+-include("Sha256TestVectors.hrl").
+
 -compile(export_all).
 
 
@@ -31,7 +33,8 @@ end_per_testcase(_TestCase, Config) -> Config.
 
 all() -> [aes_ctr_128_1, aes_ctr_128_2, aes_ctr_128_3, 
 	  aes_ctr_128_4, aes_ctr_128_5, aes_ctr_128_6, 
-	  sha1_1, sha1_2, sha1_3].
+	  sha1_1, sha1_2, sha1_3, sha256_1, sha256_2, 
+	  sha256_3].
 
 %F{{{ aes_ctr_128_...
 
@@ -73,7 +76,7 @@ aes_ctr_128_6(_Config) ->
 
 %}}}F
 
-%F{{{
+%F{{{ sha1...
 
 sha1_1(_Config) ->
     ct:comment("SHA1 testvector #1 (61 bytes message)"),
@@ -89,5 +92,24 @@ sha1_3(_Config) ->
     ct:comment("SHA1 testvector #3 (95 bytes message, offset 22, lenght 52)"),
     {Offset, Length, Msg, MD} = ?SHA1TestVector3,
     MD = otr_crypto:sha1(Msg, Offset, Length), ok.
+
+%}}}F
+
+%F{{{ sha256...
+
+sha256_1(_Config) ->
+    ct:comment("SHA256 testvector #1 ( 35 bytes message)"),
+    {Msg, MD} = ?SHA256TestVector1,
+    MD = otr_crypto:sha256(Msg), ok.
+
+sha256_2(_Config) ->
+    ct:comment("SHA256 testvector #2 ( 460 bytes message)"),
+    {Msg, MD} = ?SHA256TestVector2,
+    MD = otr_crypto:sha256(Msg), ok.
+
+sha256_3(_Config) ->
+    ct:comment("SHA256 testvector #3 (  146 bytes message, offset 26, lenght 64)"),
+    {Offset, Length, Msg, MD} = ?SHA256TestVector3,
+    MD = otr_crypto:sha256(Msg, Offset, Length), ok.
 
 %}}}F

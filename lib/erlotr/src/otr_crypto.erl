@@ -3,7 +3,7 @@
 -author("Stefan Grundmann <sg2342@googlemail.com>").
 
 -export([aes_ctr_128_decrypt/3, aes_ctr_128_encrypt/3,
-	 sha1/1, sha1/3]).
+	 sha1/1, sha1/3, sha256/1, sha256/3]).
 
 %F{{{ sha1...
 sha1(Data) -> crypto:sha(Data).
@@ -14,6 +14,17 @@ sha1(Data, Offset, Length)
     <<_:Offset/binary, Part:Length/binary, _/binary>> =
 	Data,
     crypto:sha(Part).
+%}}}F
+
+%F{{{ sha1...
+sha256(Data) -> crypto:sha256(Data).
+
+sha256(Data, Offset, Length)
+    when is_binary(Data), Offset > 0, Length > 0,
+	 size(Data) - (Offset + Length) > 0 ->
+    <<_:Offset/binary, Part:Length/binary, _/binary>> =
+	Data,
+    crypto:sha256(Part).
 %}}}F
 
 %F{{{ aes_ctr_128 ...

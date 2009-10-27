@@ -1,0 +1,13 @@
+for FreeBSD target systems:
+copy 
+ patch-erts_emulator_hipe_hipe__bif0.c
+ patch-lib_crypto_c_src_crypto__drv.c
+ patch-lib_crypto_src_crypto.erl
+to $PORTSROOT/lang/erlang/files before building the port
+
+for all other target systems: 
+apply 
+  patch-lib_crypto_c__src_crypto__drv.c
+  patch-lib_crypto_src_crypto.erl
+in the otp_src_R13B01 directory before building
+
