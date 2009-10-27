@@ -2,7 +2,7 @@
 
 -record(otr_msg_dh_commit, {enc_gx, mac_gx}).
 
--record(otr_msg_dh_key, {mpi_gy}).
+-record(otr_msg_dh_key, {gy}).
 
 -record(otr_msg_reveal_signature, {revealed_key, 
 				   enc_sig, 
@@ -13,7 +13,7 @@
 -record(otr_msg_data, {flags,
 		       sender_keyid,
 		       recipient_keyid,
-		       mpi_dhy,
+		       dhy,
 		       ctr_init,
 		       enc_data,
 		       mac,

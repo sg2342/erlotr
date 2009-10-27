@@ -23,6 +23,8 @@
 
 -export([decode/1, decode/2, encode/1, encode/2, parse_fragment/1]).
 
+-export([mpint/1]).
+
 decode(M) -> decode(M, #otr_fragment{}).
 
 decode(M, #otr_fragment{k = K, n = N, f = F}) -> 
@@ -60,9 +62,9 @@ encode(#otr_msg{type = dh_commit,
 			  MacGx/binary>>),
     {ok, <<"?OTR:", Enc/binary, ".">>};
 encode(#otr_msg{type = dh_key,
-		value = #otr_msg_dh_key{mpi_gy = MpiGy}}) ->
-    Enc = base64:encode(<<2:16, ?TYPE_DH_KEY,
-			  (size(MpiGy)):32, MpiGy/binary>>),
+		value = #otr_msg_dh_key{gy = Gy}}) ->
+    MpiGy = mpint(Gy),
+    Enc = base64:encode(<<2:16, ?TYPE_DH_KEY, MpiGy/binary>>),
     {ok, <<"?OTR:", Enc/binary, ".">>};
 encode(#otr_msg{type = reveal_signature,
 		value =
@@ -86,15 +88,16 @@ encode(#otr_msg{type = data,
 		value =
 		    #otr_msg_data{flags = Flags, sender_keyid = SenderKeyId,
 				  recipient_keyid = RecipientKeyId,
-				  mpi_dhy = MpiDhy, ctr_init = Ctr,
+				  dhy = Dhy, ctr_init = Ctr,
 				  enc_data = EncData, mac = Mac,
 				  old_mac_keys = OldMacKeys}})
     when size(Mac) == 20, SenderKeyId > 0,
 	 RecipientKeyId > 0, size(Ctr) == 8 ->
+    MpiDhy = mpint(Dhy),
     Enc = base64:encode(<<2:16, ?TYPE_DATA, Flags:8,
-			  SenderKeyId:32, RecipientKeyId:32, (size(MpiDhy)):32,
-			  MpiDhy/binary, Ctr/binary, (size(EncData)):32,
-			  EncData/binary, Mac/binary, (size(OldMacKeys)):32,
+			  SenderKeyId:32, RecipientKeyId:32, MpiDhy/binary, 
+			  Ctr/binary, (size(EncData)):32, EncData/binary, 
+			  Mac/binary, (size(OldMacKeys)):32,
 			  OldMacKeys/binary>>),
     {ok, <<"?OTR:", Enc/binary, ".">>}.%}}}F
 
@@ -165,10 +168,9 @@ parse_encoded(<<2:16, ?TYPE_DH_COMMIT, _ZEncGx:32,
     #otr_msg{type = dh_commit,
 	     value =
 		 #otr_msg_dh_commit{enc_gx = EncGx, mac_gx = MacGx}};
-parse_encoded(<<2:16, ?TYPE_DH_KEY, _ZMpiGy:32,
-		MpiGy:_ZMpiGy/binary>>) ->
+parse_encoded(<<2:16, ?TYPE_DH_KEY, MpiGy/binary>>) ->
     #otr_msg{type = dh_key,
-	     value = #otr_msg_dh_key{mpi_gy = MpiGy}};
+	     value = #otr_msg_dh_key{gy = crypto:erlint(MpiGy)}};
 parse_encoded(<<2:16, ?TYPE_REVEAL_SIGNATURE,
 		_ZRevKey:32, RevKey:_ZRevKey/binary, _ZEncSig:32,
 		EncSig:_ZEncSig/binary, MacEncSig:20/binary>>) ->
@@ -184,15 +186,16 @@ parse_encoded(<<2:16, ?TYPE_SIGNATURE, _ZEncSig:32,
 		 #otr_msg_signature{enc_sig = EncSig,
 				    mac_enc_sig = MacEncSig}};
 parse_encoded(<<2:16, ?TYPE_DATA, Flags:8,
-		SenderKeyId:32, RecipientKeyId:32, _ZMpiDhy:32,
-		MpiDhy:_ZMpiDhy/binary, Ctr:8/binary, _ZData:32,
+		SenderKeyId:32, RecipientKeyId:32, ZMpiDhy:32,
+		MpiDhy:ZMpiDhy/binary, Ctr:8/binary, _ZData:32,
 		Data:_ZData/binary, Mac:20/binary, _ZOldMacKeys:32,
 		OldMacKeys:_ZOldMacKeys/binary>>) ->
+    Dhy = crypto:erlint(<<ZMpiDhy:32, MpiDhy/binary>>),
     #otr_msg{type = data,
 	     value =
 		 #otr_msg_data{flags = Flags, sender_keyid = SenderKeyId,
 			       recipient_keyid = RecipientKeyId,
-			       mpi_dhy = MpiDhy, ctr_init = Ctr,
+			       dhy = Dhy, ctr_init = Ctr,
 			       enc_data = Data, mac = Mac,
 			       old_mac_keys = OldMacKeys}};
 parse_encoded(_) ->
@@ -216,3 +219,12 @@ fragment_header(K, N) ->
     list_to_binary("?OTR," ++ integer_to_list(K) ++
 		   "," ++ integer_to_list(N) ++ ",").
 %}}}F
+
+mpint(X) ->
+    <<_Size:32, Bin/binary>> = crypto:mpint(X),
+    Stripped = strip_leading_zeros(Bin),
+    <<(size(Stripped)):32, Stripped/binary>>.
+
+strip_leading_zeros(<<0:8, Tail/binary>>) ->
+    strip_leading_zeros(Tail);
+strip_leading_zeros(Stripped) -> Stripped.
