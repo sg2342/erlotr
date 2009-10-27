@@ -10,6 +10,8 @@
 
 -include("HMACTestVectors.hrl").
 
+-include("DSATestVectors.hrl").
+
 -compile(export_all).
 
 
@@ -37,7 +39,8 @@ all() -> [aes_ctr_128_1, aes_ctr_128_2, aes_ctr_128_3,
 	  aes_ctr_128_4, aes_ctr_128_5, aes_ctr_128_6, 
 	  sha1_1, sha1_2, sha1_3, sha256_1, sha256_2, 
 	  sha256_3, sha1HMAC_1, sha1HMAC_2, sha1HMAC_3,
-	  sha256HMAC_1, sha256HMAC_2, sha256HMAC_3].
+	  sha256HMAC_1, sha256HMAC_2, sha256HMAC_3, 
+	  dsa_verify_1, dsa_verify_2, dsa_sign_1, dsa_sign_2].
 
 %F{{{ aes_ctr_128_...
 
@@ -154,5 +157,33 @@ sha256HMAC_3(_Config) ->
     {Key, Data, Mac} = ?HMACTestVector6,
     SzMac = size(Mac),
     <<Mac:SzMac/binary, _/binary>>  = otr_crypto:sha256HMAC(Key, Data), ok.
+
+%}}}F
+
+%F{{{  dsa...
+dsa_verify_1(_Config) ->
+    ct:comment("DSA Verify testvector #1"),
+    {[P, Q, G, _, Y], Data, Signature, Result} = ?DSATestVector1,
+    Result = otr_crypto:dsa_verify([P, Q, G, Y], Data, Signature), ok.
+
+dsa_verify_2(_Config) ->
+    ct:comment("DSA Verify testvector #2"),
+    {[P, Q, G, _, Y], Data, Signature, Result} = ?DSATestVector1,
+    Result = otr_crypto:dsa_verify([P, Q, G, Y], Data, Signature), ok.
+
+dsa_sign_1(_Config) ->
+    ct:comment("DSA Sign random data, keys from testvector #1"),
+    {[P, Q, G, X, Y], _, _, _} = ?DSATestVector1,
+    Data = crypto:rand_bytes(1024),
+    {R, S} = otr_crypto:dsa_sign([P, Q, G, X], Data),
+    true = otr_crypto:dsa_verify([P, Q, G, Y], Data, {R, S}).
+
+dsa_sign_2(_Config) ->
+    ct:comment("DSA Sign random data, keys from testvector #2"),
+    {[P, Q, G, X, Y], _, _, _} = ?DSATestVector2,
+    Data = crypto:rand_bytes(512),
+    {R, S} = otr_crypto:dsa_sign([P, Q, G, X], Data),
+    true = otr_crypto:dsa_verify([P, Q, G, Y], Data, {R, S}).
+
 
 %}}}F

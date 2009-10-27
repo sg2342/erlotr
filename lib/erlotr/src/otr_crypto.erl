@@ -1,8 +1,17 @@
+%
+% this module is mostly just a wrapper around crypto primitives provided by
+% the crypto application. 
+%
+% some crypto primitives needed by the OTR application are not part
+% of the crypto application. these are implemented here.
+%
+
 -module(otr_crypto).
 
 -author("Stefan Grundmann <sg2342@googlemail.com>").
 
 -export([aes_ctr_128_decrypt/3, aes_ctr_128_encrypt/3,
+	 dsa_sign/2, dsa_verify/3,
 	 sha1/1, sha1/3, sha1HMAC/2, sha256/1, sha256/3,
 	 sha256HMAC/2]).
 
@@ -80,3 +89,88 @@ do_aes_ctr_128(Key, {Nonce, Counter}, Plaintext,
 
 %}}}F
 
+%F{{{ dsa_sign, dsa_verify
+%
+% stolen from ssh-1.1.6/src/ssh_dsa.erl, ssh-1.1.6/src/ssh_math.erl
+%
+dsa_sign(_PrivateKey = [P, Q, G, X], Data) ->
+    K = irandom(160) rem Q,
+    R = ipow(G, K, P) rem Q,
+    Ki = invert(K, Q),
+    <<M:160/big-unsigned-integer>> = sha1(Data),
+    S = (Ki * (M + X*R)) rem Q,
+    {R, S}.
+
+dsa_verify(_PublicKye = [P, Q, G, Y], Data, {R0, S0}) ->
+    W = invert(S0, Q),
+    <<M0:160/big-unsigned-integer>> = sha1(Data),
+    U1 = (M0*W) rem Q,
+    U2 = (R0*W) rem Q,
+    T1 = ipow(G, U1, P),
+    T2 = ipow(Y, U2, P),
+    V = ((T1*T2) rem P) rem Q,
+    (V == R0).   
+
+irandom(Bits) -> %F{{{
+    irandom(Bits, 1, 0).
+
+irandom(0, _Top, _Bottom) -> 
+    0;
+irandom(Bits, Top, Bottom) ->
+    Bytes = (Bits+7) div 8,
+    Skip  = (8-(Bits rem 8)) rem 8,
+    TMask = case Top of
+		  0 -> 0;
+		  1 -> 16#80;
+		  2 -> 16#c0
+	      end,
+    BMask = case Bottom of
+		0 -> 0;
+		1 -> (1 bsl Skip)
+	    end,
+    <<X:Bits/big-unsigned-integer, _:Skip>> = random(Bytes, TMask, BMask),
+    X.
+
+random(N) ->
+    random(N, 0, 0).
+
+random(N, TMask, BMask) ->
+    list_to_binary(rnd(N, TMask, BMask)).
+
+rnd(0, _TMask, _BMask) ->
+    [];
+rnd(1, TMask, BMask) ->
+    [(rand8() bor TMask) bor BMask];
+rnd(N, TMask, BMask) ->
+    [(rand8() bor TMask) | rnd_n(N-1, BMask)].
+
+rnd_n(1, BMask) ->
+    [rand8() bor BMask];
+rnd_n(I, BMask) ->
+    [rand8() | rnd_n(I-1, BMask)].
+
+rand8() ->
+    (rand32() bsr 8) band 16#ff.
+
+rand32() ->
+    random:uniform(16#100000000) -1.
+
+%}}}F
+
+ipow(A, B, M) when M > 0, B >= 0 ->
+    crypto:mod_exp(A, B, M).
+
+invert(X,P) when X > 0, P > 0, X < P -> %F{{{
+    I = inv(X,P,1,0),
+    if 
+        I < 0 -> P + I;
+        true -> I
+    end.
+
+inv(0,_,_,Q) -> Q;
+inv(X,P,R1,Q1) ->
+    D = P div X,
+    inv(P rem X, X, Q1 - D*R1, R1).
+%}}}F
+
+%}}}F
