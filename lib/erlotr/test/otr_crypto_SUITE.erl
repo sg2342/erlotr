@@ -40,7 +40,8 @@ all() -> [aes_ctr_128_1, aes_ctr_128_2, aes_ctr_128_3,
 	  sha1_1, sha1_2, sha1_3, sha256_1, sha256_2, 
 	  sha256_3, sha1HMAC_1, sha1HMAC_2, sha1HMAC_3,
 	  sha256HMAC_1, sha256HMAC_2, sha256HMAC_3, 
-	  dsa_verify_1, dsa_verify_2, dsa_sign_1, dsa_sign_2].
+	  dsa_verify_1, dsa_verify_2, dsa_sign_1, dsa_sign_2, 
+	  dh_key_exchange].
 
 %F{{{ aes_ctr_128_...
 
@@ -187,3 +188,13 @@ dsa_sign_2(_Config) ->
 
 
 %}}}F
+
+%F{{{ dh_key_exchange
+dh_key_exchange(_Config) ->
+    ct:comment("Diffie Hellman key exchange"),
+    {PrivAlice, PubAlice} = otr_crypto:dh_gen_key(),
+    {PrivBob, PubBob} = otr_crypto:dh_gen_key(),
+    SharedSecret = otr_crypto:dh_agree(PrivAlice, PubBob),
+    SharedSecret = otr_crypto:dh_agree(PrivBob, PubAlice), ok.
+%}}}F
+
