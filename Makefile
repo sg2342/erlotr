@@ -4,6 +4,8 @@ ERL=${ERL_BASE}/bin/erl
 
 ERL_PA=-pa ${PWD}/lib/*/ebin
 
+TEST_SPEC?=test.spec
+
 APPLICATIONS=erlotr
 
 all: test
@@ -48,5 +50,6 @@ applications:
 test.spec: test.spec.in
 	cat test.spec.in | sed s%@PATH@%${PWD}% > test.spec
 
-test: logdir build test.spec
-	${RUN_TEST} ${ERL_PA} -spec test.spec -logdir ${PWD}/log -cover cover.spec
+test: logdir build ${TEST_SPEC}
+	${RUN_TEST} ${ERL_PA} -spec ${TEST_SPEC} -logdir ${PWD}/log -cover cover.spec
+

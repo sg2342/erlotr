@@ -24,8 +24,6 @@ all() ->
      parse_data_2, encode_data_2, parse_query, encode_query,
      parse_error, encode_error, parse_tagged_ws_1,
      parse_tagged_ws_2, encode_tagged_ws, parse_fragment,
-     reassemble_fragmented_1, reassemble_fragmented_2,
-     reassemble_fragmented_3, reassemble_fragmented_4,
      encode_fragmented_1, encode_fragmented_2, parse_plain_1,
      parse_plain_2, parse_plain_3, parse_plain_4,
      parse_plain_5, parse_fail_1, parse_fail_2, parse_fail_3,
@@ -161,67 +159,6 @@ parse_fragment(_Config) ->
     {ok, #otr_msg_fragment{k = 1, n = 2, f = "foobarnaz"}} =
 	otr_message:parse("?OTR,1,2,foobarnaz,").
 
-reassemble_fragmented_1(_Config) ->
-    ct:comment("reassemble fragmented OTR DATA message "
-	       "(using testvector #7)"),
-    {_, FragmentList, Message} = (?MessageTestVector7),
-    Ass = fun (M, State) ->
-		  {ok, F} = otr_message:parse(M),
-		  case otr_message:reassemble(F, State) of
-		    {need_more_fragments, NewState} -> NewState;
-		    X -> X
-		  end
-	  end,
-    {ok, Message} = lists:foldl(Ass, #otr_msg_fragment{},
-				FragmentList).
-
-reassemble_fragmented_2(_Config) ->
-    ct:comment("handle out of order fragments (wrong "
-	       "K):reset the reassembly state"),
-    {need_more_fragments, S0} =
-	otr_message:reassemble(#otr_msg_fragment{k = 1, n = 5,
-						 f = "first"}),
-    {need_more_fragments, S1} =
-	otr_message:reassemble(#otr_msg_fragment{k = 2, n = 5,
-						 f = "second"},
-			       S0),
-    {no_fragments, #otr_msg_fragment{}} =
-	otr_message:reassemble(#otr_msg_fragment{k = 4, n = 5,
-						 f = "fourth"},
-			       S1).
-
-reassemble_fragmented_3(_Config) ->
-    ct:comment("handle out of order fragments (wrong "
-	       "N):reset the reassembly state"),
-    {need_more_fragments, S0} =
-	otr_message:reassemble(#otr_msg_fragment{k = 1, n = 5,
-						 f = "first"}),
-    {need_more_fragments, S1} =
-	otr_message:reassemble(#otr_msg_fragment{k = 2, n = 5,
-						 f = "second"},
-			       S0),
-    {no_fragments, #otr_msg_fragment{}} =
-	otr_message:reassemble(#otr_msg_fragment{k = 4, n = 2,
-						 f = "not the fourth"},
-			       S1).
-
-reassemble_fragmented_4(_Config) ->
-    ct:comment("handle out of order fragments (new first):res"
-	       "et the reassembly state, start with "
-	       "new one"),
-    {need_more_fragments, S0} =
-	otr_message:reassemble(#otr_msg_fragment{k = 1, n = 5,
-						 f = "first"}),
-    {need_more_fragments, S1} =
-	otr_message:reassemble(#otr_msg_fragment{k = 2, n = 5,
-						 f = "second"},
-			       S0),
-    {need_more_fragments,
-     #otr_msg_fragment{k = 1, n = 6,
-		       f = "new 1st fragment"}} =
-	otr_message:reassemble(#otr_msg_fragment{k = 1, n = 6,
-						 f = "new 1st fragment"},
-			       S1).
 
 encode_fragmented_1(_Config) ->
     ct:comment("encode fragmented OTR DATA message (using "

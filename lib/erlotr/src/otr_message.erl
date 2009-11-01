@@ -13,8 +13,7 @@
 
 %}}}F
 
--export([encode/1, encode/2, parse/1, reassemble/1,
-	 reassemble/2]).
+-export([encode/1, encode/2, parse/1]).
 
 encode(M) -> do_encode(M).
 
@@ -27,10 +26,6 @@ parse(M) ->
       plain -> plain;
       Else -> Else
     end.
-
-reassemble(F) -> reassemble(F, #otr_msg_fragment{}).
-
-reassemble(F, State) -> do_reassemble(F, State).
 
 %F{{{ encode code
 do_encode(otr_msg_query) -> {ok, "?OTRv2?"};
@@ -136,15 +131,10 @@ parse_query_m(M, Ss, Sl) ->
 	  end
     end.
 
-%
-% the following code assumes, that OTR fragment messages must only
-% contain (parts of) OTR encoded messages (which makes sense somehow)
-%
-%
 parse_fragment_m(M, Ss, Sl) ->
     X = string:chr(string:sub_string(M, Ss + Sl), $,),
     Y = string:chr(string:sub_string(M, Ss + Sl + X), $,),
-    Z = string:chr(string:sub_string(M, Ss + Sl + X + Y),
+    Z = string:rchr(string:sub_string(M, Ss + Sl + X + Y),
 		   $,),
     if X > 0, Y > 0, Z > 0 ->
 	   try K = list_to_integer(string:sub_string(M, Ss + Sl,
@@ -206,21 +196,4 @@ parse_encoded_bin(<<2:16, (?TYPE_DATA), Flags:8,
 		   recipient_keyid = RecipientKeyId, dhy = Dhy,
 		   ctr_init = Ctr, enc_data = Data, mac = Mac,
 		   old_mac_keys = OldMacKeys}}.%}}}F
-
-%F{{{ reassemble code
-do_reassemble(#otr_msg_fragment{k = 1} = P, _) ->
-    {need_more_fragments, P};
-do_reassemble(#otr_msg_fragment{k = N, n = N} = P,
-	      #otr_msg_fragment{k = Ks, n = N} = State)
-    when Ks == N - 1 ->
-    M = State#otr_msg_fragment.f ++ P#otr_msg_fragment.f,
-    parse(M);
-do_reassemble(#otr_msg_fragment{k = K, n = N} = P,
-	      #otr_msg_fragment{k = Ks, n = N} = State)
-    when Ks == K - 1 ->
-    {need_more_fragments,
-     P#otr_msg_fragment{f =
-			    State#otr_msg_fragment.f ++ P#otr_msg_fragment.f}};
-do_reassemble(_, _) ->
-    {no_fragments, #otr_msg_fragment{}}.%}}}F
 
