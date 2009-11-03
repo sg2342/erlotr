@@ -28,6 +28,7 @@ parse(M) ->
     end.
 
 %F{{{ encode code
+do_encode({plain, M}) -> {ok, M};
 do_encode(otr_msg_query) -> {ok, "?OTRv2?"};
 do_encode(#otr_msg_tagged_ws{s = S}) ->
     {ok, S ++ (?TAG_V2)};

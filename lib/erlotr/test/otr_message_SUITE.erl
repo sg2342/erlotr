@@ -24,10 +24,10 @@ all() ->
      parse_data_2, encode_data_2, parse_query, encode_query,
      parse_error, encode_error, parse_tagged_ws_1,
      parse_tagged_ws_2, encode_tagged_ws, parse_fragment,
-     encode_fragmented_1, encode_fragmented_2, parse_plain_1,
-     parse_plain_2, parse_plain_3, parse_plain_4,
-     parse_plain_5, parse_fail_1, parse_fail_2, parse_fail_3,
-     parse_fail_4, parse_fail_5].
+     encode_fragmented_1, encode_fragmented_2, encode_plain,
+     parse_plain_1, parse_plain_2, parse_plain_3,
+     parse_plain_4, parse_plain_5, parse_fail_1,
+     parse_fail_2, parse_fail_3, parse_fail_4, parse_fail_5].
 
 parse_dh_commit(_Config) ->
     ct:comment("parse OTR DH COMMIT message (using testvector "
@@ -159,7 +159,6 @@ parse_fragment(_Config) ->
     {ok, #otr_msg_fragment{k = 1, n = 2, f = "foobarnaz"}} =
 	otr_message:parse("?OTR,1,2,foobarnaz,").
 
-
 encode_fragmented_1(_Config) ->
     ct:comment("encode fragmented OTR DATA message (using "
 	       "testvector #7)"),
@@ -174,6 +173,11 @@ encode_fragmented_2(_Config) ->
 	       "(using testvector #3)"),
     {Data, Message} = (?MessageTestVector3),
     {ok, Data} = otr_message:encode(Message, 1024).
+
+encode_plain(_Config) ->
+    ct:comment("encode plain message"),
+    M = "foo bar baz",
+    {ok, M} = otr_message:encode({plain, M}).
 
 parse_plain_1(_Config) ->
     ct:comment("Fail to decode OTR QUERY (no V2) messages"),
