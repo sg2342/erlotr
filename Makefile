@@ -28,7 +28,7 @@ clean:
 	    done
 
 shiny: clean
-	rm test.spec
+	rm -f test.spec
 	rm -rf log 
 
 logdir:

@@ -15,3 +15,6 @@
 -record(otr_msg_data, {flags, sender_keyid, recipient_keyid, 
 		       dhy, ctr_init, enc_data, mac, old_mac_keys}).
 
+
+-define(OTRL_ERRCODE_MSG_NOT_IN_PRIVATE, "You sent sn encrypted message, "
+        "but we finished th private conversation").
