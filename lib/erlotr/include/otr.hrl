@@ -18,3 +18,6 @@
 
 -define(OTRL_ERRCODE_MSG_NOT_IN_PRIVATE, "You sent sn encrypted message, "
         "but we finished th private conversation").
+
+
+-define(DEFAULT_MAX_FRAG_SIZE, 1024).

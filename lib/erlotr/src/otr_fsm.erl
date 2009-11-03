@@ -17,7 +17,8 @@
 -record(s,
 	{emit_user, emit_net, require_encryption,
 	 whitespace_start_ake, error_start_ake,
-	 send_whitespace_tag, got_plaintext = false, pt, auth}).
+	 max_fragment_size, send_whitespace_tag,
+	 got_plaintext = false, pt = [], auth}).
 
 start_link(Opts) ->
     gen_fsm:start_link(?MODULE, Opts, []).
@@ -25,11 +26,12 @@ start_link(Opts) ->
 consume(Pid, M) -> gen_fsm:send_event(Pid, M).
 
 %F{{{ states
+
 %F{{{ plaintext({user ....
 plaintext({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
     {next_state, plaintext, State};
-plaintext({user, stop_ort}, State) ->
+plaintext({user, stop_otr}, State) ->
     {next_state, plaintext, State};
 plaintext({user, {message, M}},
 	  #s{require_encryption = true} = State) ->
@@ -38,7 +40,10 @@ plaintext({user, {message, M}},
 plaintext({user, {message, M}},
 	  #s{send_whitespace_tag = true} = State) ->
     emit_net(State, #otr_msg_tagged_ws{s = M}),
-    {next_state, plaintext, State}; %}}}F
+    {next_state, plaintext, State};
+plaintext({user, {message, M}}, State) ->
+    emit_net(State, {plain, M}),
+    {next_state, plaintext, State};%}}}F
 %F{{{ plaintext({net
 plaintext({net, {plain, M}}, State) ->
     emit_user(State, {message, M, []}),
@@ -49,10 +54,13 @@ plaintext({net, #otr_msg_tagged_ws{s = M}}, State) ->
      emit_dh_commit(State, State#s.whitespace_start_ake)};
 plaintext({net, otr_msg_query}, State) ->
     {next_state, plaintext, emit_dh_commit(State, true)};
+plaintext({net, #otr_msg_error{s = M}},
+	  #s{error_start_ake = true} = State) ->
+    emit_net(State, otr_msg_query),
+    emit_user(State, {error_net, M}),
+    {next_state, plaintext, State};
 plaintext({net, #otr_msg_error{s = M}}, State) ->
     emit_user(State, {error_net, M}),
-    State#s.error_start_ake andalso
-      emit_net(State, otr_msg_query),
     {next_state, plaintext, State};
 plaintext({net, #otr_msg_dh_commit{} = M}, State) ->
     {next_state, plaintext,
@@ -168,7 +176,7 @@ finished({net, #otr_msg_data{}}, State) ->
 
 %F{{{ gen_fsm callbacks
 
-init(Opts) -> {ok, plaintext, #s{}}.
+init(Opts) -> {ok, plaintext, process_opts(Opts)}.
 
 handle_info(Info, StateName, StateData) ->
     {stop, {StateName, undefined_info, Info}, StateData}.
@@ -188,7 +196,6 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %}}}F
 
 %F{{{ internal functions
-
 consume_otr_msg_signature(#otr_msg_signature{} = M,
 			  StateName, State) ->
     % If authstate is AUTHSTATE_AWAITING_SIG:
@@ -262,15 +269,30 @@ emit_dh_commit(State, true) ->
     % TODO send D-H Commit Message
     State#s{auth = authstate_awaiting_dhkey}.
 
-%F{{{ emit_...
 emit_user(#s{emit_user = F, require_encryption = true},
 	  {message, M}) ->
     F({message, M, [warning_unencrypted]});
 emit_user(#s{emit_user = F}, M) -> F(M).
 
-emit_net(#s{emit_net = F}, M) ->
-    {ok, Data} = otr_message:encode(M),
-    F(Data). %  XXX fragmentation code
-	                                                                            %}}}F
-										    %}}}F
+emit_net(#s{emit_net = F, max_fragment_size = FSz},
+	 M) ->
+    case otr_message:encode(M, FSz) of
+      {ok, Data} -> F(Data);
+      {fragmented, FL} -> lists:foreach(F, FL)
+    end.
+
+process_opts(O) ->
+    #s{emit_user = proplists:get_value(emit_user, O),
+       emit_net = proplists:get_value(emit_net, O),
+       require_encryption =
+	   proplists:get_bool(require_encryption, O),
+       whitespace_start_ake =
+	   proplists:get_bool(whitespace_start_ake, O),
+       error_start_ake =
+	   proplists:get_bool(error_start_ake, O),
+       send_whitespace_tag =
+	   proplists:get_bool(send_whitespace_tag, O),
+       max_fragment_size =
+	   proplists:get_value(max_fragment_size, O,
+			       ?DEFAULT_MAX_FRAG_SIZE)}.%}}}F
 
