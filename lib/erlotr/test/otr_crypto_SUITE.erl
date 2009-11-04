@@ -37,6 +37,7 @@ end_per_testcase(_TestCase, Config) -> Config.
 
 all() -> [aes_ctr_128_1, aes_ctr_128_2, aes_ctr_128_3, 
 	  aes_ctr_128_4, aes_ctr_128_5, aes_ctr_128_6, 
+	  aes_ecb_128_1, 
 	  sha1_1, sha1_2, sha1_3, sha256_1, sha256_2, 
 	  sha256_3, sha1HMAC_1, sha1HMAC_2, sha1HMAC_3,
 	  sha256HMAC_1, sha256HMAC_2, sha256HMAC_3, 
@@ -80,6 +81,15 @@ aes_ctr_128_6(_Config) ->
     {Key, Nonce, Plaintext, Ciphertext} = ?AESTestVector6,
     Ciphertext = otr_crypto:aes_ctr_128_encrypt(Key, Nonce, Plaintext),
     Plaintext = otr_crypto:aes_ctr_128_decrypt(Key, Nonce, Ciphertext), ok.
+
+%}}}F
+
+%F{{{ aes_ecb_128_...
+aes_ecb_128_1(_Config) ->
+    ct:comment("AES ECB testvector #1"),
+    {Key, Plaintext, Ciphertext} = ?ECBTestVector1,
+    Ciphertext = otr_crypto:aes_ecb_128_encrypt(Key, Plaintext),
+    Plaintext = otr_crypto:aes_ecb_128_decrypt(Key, Ciphertext), ok.
 
 %}}}F
 
@@ -165,12 +175,12 @@ sha256HMAC_3(_Config) ->
 dsa_verify_1(_Config) ->
     ct:comment("DSA Verify testvector #1"),
     {[P, Q, G, _, Y], Data, Signature, Result} = ?DSATestVector1,
-    Result = otr_crypto:dsa_verify([P, Q, G, Y], Data, Signature), ok.
+    Result = otr_crypto:dsa_verify([P, Q, G, Y], otr_crypto:sha1(Data), Signature), ok.
 
 dsa_verify_2(_Config) ->
     ct:comment("DSA Verify testvector #2"),
     {[P, Q, G, _, Y], Data, Signature, Result} = ?DSATestVector1,
-    Result = otr_crypto:dsa_verify([P, Q, G, Y], Data, Signature), ok.
+    Result = otr_crypto:dsa_verify([P, Q, G, Y], otr_crypto:sha1(Data), Signature), ok.
 
 dsa_sign_1(_Config) ->
     ct:comment("DSA Sign random data, keys from testvector #1"),
