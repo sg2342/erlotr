@@ -10,7 +10,7 @@
 
 -author("Stefan Grundmann <sg2342@googlemail.com>").
 
--include("otr.hrl").
+-include("otr_internal.hrl").
 
 -export([aes_ctr_128_decrypt/3, aes_ctr_128_encrypt/3,
 	 aes_ecb_128_decrypt/2, aes_ecb_128_encrypt/2,

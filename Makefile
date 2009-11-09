@@ -51,5 +51,5 @@ test.spec: test.spec.in
 	cat test.spec.in | sed s%@PATH@%${PWD}% > test.spec
 
 test: logdir build ${TEST_SPEC}
-	${RUN_TEST} ${ERL_PA} -spec ${TEST_SPEC} -logdir ${PWD}/log -cover cover.spec
+	${RUN_TEST} ${ERL_PA} -spec ${TEST_SPEC} -logdir ${PWD}/log -cover cover.spec -include ${PWD}/"lib/erlotr/src"
 

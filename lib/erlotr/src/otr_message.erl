@@ -2,7 +2,7 @@
 
 -author("Stefan Grundmann <sg2342@googlemail.com>").
 
--include("otr.hrl").
+-include("otr_internal.hrl").
 
 %F{{{ constants
 -define(TAG_V1_or_V2,
@@ -20,7 +20,7 @@ encode(M) -> do_encode(M).
 encode(M, MaxFragmentSize) ->
     {ok, S} = do_encode(M), do_fragment(S, MaxFragmentSize).
 
-parse(M) ->
+parse(M) when is_list(M) ->
     {ParseFun, Ss, Sl} = get_parsefun_and_params(M),
     case ParseFun(M, Ss, Sl) of
       plain -> plain;

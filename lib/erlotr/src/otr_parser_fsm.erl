@@ -1,8 +1,16 @@
+%%
+%% Purpose: Off-the-Record Messaging 
+%%          (http://www.cypherpunks.ca/otr/Protocol-v2-3.1.0.html)
+%%          message parser/ fragment reassembly state machine
+%%
+
 -module(otr_parser_fsm).
 
 -author("Stefan Grundmann <sg2342@googlemail.com>").
 
--include("otr.hrl").
+-copyright("Copyright 2009 Stefan Grundmann").
+
+-include("otr_internal.hrl").
 
 % gen_fsm callbacks
 -export([code_change/4, handle_event/3, handle_info/3,

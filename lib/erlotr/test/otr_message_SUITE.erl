@@ -4,7 +4,7 @@
 
 -compile(export_all).
 
--include_lib("erlotr/include/otr.hrl").
+-include("otr_internal.hrl").
 
 -include("MessageTestVectors.hrl").
 
