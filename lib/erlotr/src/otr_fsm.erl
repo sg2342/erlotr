@@ -1,7 +1,16 @@
+%%
+%% Purpose: Off-the-Record Messaging
+%%          (http://www.cypherpunks.ca/otr/Protocol-v2-3.1.0.html)
+%%          message state machine
+%%
+
 -module(otr_fsm).
 
 -author("Stefan Grundmann <sg2342@googlemail.com>").
 
+-copyright("Copyright 2009 Stefan Grundmann").
+
+-include("otr_internal.hrl").
 -include("otr.hrl").
 
 % gen_fsm callbacks
@@ -17,8 +26,8 @@
 -record(s,
 	{emit_user, emit_net, require_encryption,
 	 whitespace_start_ake, error_start_ake,
-	 max_fragment_size, send_whitespace_tag,
-	 got_plaintext = false, pt = [], auth}).
+	 max_fragment_size, send_whitespace_tag, otr_ctx,
+	 got_plaintext = false, pt = [], ake}).
 
 start_link(Opts) ->
     gen_fsm:start_link(?MODULE, Opts, []).
@@ -27,6 +36,12 @@ consume(Pid, M) -> gen_fsm:send_event(Pid, M).
 
 %F{{{ states
 
+plaintext({ake, {encrypted, {KeyIdy, GX, PubKeyFP}}}, State) ->
+    %TODO
+    % check fingerpring, id, pubkey ....
+    % bla
+    emit_user(State, {status, {encrypted, PubKeyFP}}),
+    {next_state, encrypted, State};
 %F{{{ plaintext({user ....
 plaintext({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
@@ -36,7 +51,7 @@ plaintext({user, stop_otr}, State) ->
 plaintext({user, {message, M}},
 	  #s{require_encryption = true} = State) ->
     emit_net(State, otr_msg_query),
-    {next_state, plaintext, State#s{pt = [m | State#s.pt]}};
+    {next_state, plaintext, State#s{pt = [M | State#s.pt]}};
 plaintext({user, {message, M}},
 	  #s{send_whitespace_tag = true} = State) ->
     emit_net(State, #otr_msg_tagged_ws{s = M}),
@@ -50,10 +65,9 @@ plaintext({net, {plain, M}}, State) ->
     {next_state, plaintext, State};
 plaintext({net, #otr_msg_tagged_ws{s = M}}, State) ->
     emit_user(State, {message, M}),
-    {next_state, plaintext,
-     emit_dh_commit(State, State#s.whitespace_start_ake)};
-plaintext({net, otr_msg_query}, State) ->
-    {next_state, plaintext, emit_dh_commit(State, true)};
+    {ok, Ake} = init_ake(State),
+    otr_ake_fsm:consume(Ake, {cmd, start}),
+    {next_state, plaintext, State#s{ake = Ake}};
 plaintext({net, #otr_msg_error{s = M}},
 	  #s{error_start_ake = true} = State) ->
     emit_net(State, otr_msg_query),
@@ -62,27 +76,21 @@ plaintext({net, #otr_msg_error{s = M}},
 plaintext({net, #otr_msg_error{s = M}}, State) ->
     emit_user(State, {error_net, M}),
     {next_state, plaintext, State};
-plaintext({net, #otr_msg_dh_commit{} = M}, State) ->
-    {next_state, plaintext,
-     consume_otr_msg_dh_commit(M, State)};
-plaintext({net, #otr_msg_dh_key{} = M}, State) ->
-    {next_state, plaintext,
-     consume_otr_msg_dh_key(M, State)};
-plaintext({net, #otr_msg_reveal_signature{} = M},
-	  State) ->
-    {next_state, plaintext,
-     consume_otr_msg_reveal_signature(M, State)};
-plaintext({net, #otr_msg_signature{} = M}, State) ->
-    {NextStateName, NState} = consume_otr_msg_signature(M,
-							plaintext, State),
-    {next_state, NextStateName, NState};
 plaintext({net, #otr_msg_data{}}, State) ->
     emit_user(State,
 	      {error, unreadable_encrypted_received}),
     emit_net(State,
 	     #otr_msg_error{s = ?OTRL_ERRCODE_MSG_NOT_IN_PRIVATE}),
-    {next_state, plaintext, State}.%}}}F
+    {next_state, plaintext, State};
+plaintext({net, M}, State) ->
+    handle_ake_message(M, plaintext, State).  %}}}F
 
+encrypted({ake, {encrypted, {KeyIdy, GX, PubKeyFP}}}, State) ->
+    %TODO
+    % check fingerpring, id, pubkey ....
+    % bla
+    emit_user(State, {status, {keys_changed, PubKeyFP}}),
+    {next_state, encrypted, State};
 %F{{{ encrypted({user
 encrypted({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
@@ -95,36 +103,34 @@ encrypted({user, {message, M}}, State) ->
     {next_state, encrypted, State};  %}}}F
 %F{{{ encrypted({net
 encrypted({net, {plain, M}}, State) ->
-    emit_user(State, {message, M}),
+    emit_user(State, {message, M, [warning_unencrypted]}),
     {next_state, encrypted, State};
+encrypted({net, #otr_msg_tagged_ws{s = M}},
+	  #s{whitespace_start_ake = true} = State) ->
+    emit_user(State, {message, M, [warning_unencrypted]}),
+    {ok, Ake} = init_ake(State),
+    otr_ake_fsm:consume(Ake, {cmd, start}),
+    {next_state, encrypted, State#s{ake = Ake}};
 encrypted({net, #otr_msg_tagged_ws{s = M}}, State) ->
-    emit_user(State, {message, M}),
-    {next_state, encrypted,
-     emit_dh_commit(State, State#s.whitespace_start_ake)};
-encrypted({net, otr_msg_query}, State) ->
-    {next_state, encrypted, emit_dh_commit(State, true)};
+    emit_user(State, {message, M, [warning_unencrypted]}),
+    {next_state, encrypted, State};
 encrypted({net, #otr_msg_error{s = M}}, State) ->
     emit_user(State, {error_net, M}),
     State#s.error_start_ake andalso
       emit_net(State, otr_msg_query),
     {next_state, encrypted, State};
-encrypted({net, #otr_msg_dh_commit{} = M}, State) ->
-    {next_state, encrypted,
-     consume_otr_msg_dh_commit(M, State)};
-encrypted({net, #otr_msg_dh_key{} = M}, State) ->
-    {next_state, encrypted,
-     consume_otr_msg_dh_key(M, State)};
-encrypted({net, #otr_msg_reveal_signature{} = M},
-	  State) ->
-    {next_state, encrypted,
-     consume_otr_msg_reveal_signature(M, State)};
-encrypted({net, #otr_msg_signature{} = M}, State) ->
-    {NextStateName, NState} = consume_otr_msg_signature(M,
-							encrypted, State),
-    {next_state, NextStateName, NState};
 encrypted({net, #otr_msg_data{} = M}, State) ->
-    consume_otr_msg_data(M, State).%}}}F
+    %%% TODO
+    {next_state, encrypted, State};
+encrypted({net, M}, State) ->
+    handle_ake_message(M, encrypted, State).%}}}F
 
+finished({ake, {encrypted, {KeyIdy, GX, PubKeyFP}}}, State) ->
+    %TODO
+    % check fingerpring, id, pubkey ....
+    % bla
+    emit_user(State, {status, {keys_changed, PubKeyFP}}),
+    {next_state, encrypted, State};
 %F{{{ finished({user ...
 finished({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
@@ -138,49 +144,43 @@ finished({user, {message, M}}, State) ->
     {next_state, finished, State};  %}}}F
 %F{{{ finished({net
 finished({net, {plain, M}}, State) ->
-    emit_user(State, {message, M}),
+    emit_user(State, {message, M, [warning_unencrypted]}),
     {next_state, finished, State};
+finished({net, #otr_msg_tagged_ws{s = M}},
+	 #s{whitespace_start_ake = true} = State) ->
+    emit_user(State, {message, M, [warning_unencrypted]}),
+    {ok, Ake} = init_ake(State),
+    otr_ake_fsm:consume(Ake, {cmd, start}),
+    {next_state, finished, State#s{ake = Ake}};
 finished({net, #otr_msg_tagged_ws{s = M}}, State) ->
-    emit_user(State, {message, M}),
-    {next_state, finished,
-     emit_dh_commit(State, State#s.whitespace_start_ake)};
-finished({net, otr_msg_query}, State) ->
-    {next_state, finished, emit_dh_commit(State, true)};
+    emit_user(State, {message, M, [warning_unencrypted]}),
+    {next_state, finished, State};
 finished({net, #otr_msg_error{s = M}}, State) ->
     emit_user(State, {error_net, M}),
     State#s.error_start_ake andalso
       emit_net(State, otr_msg_query),
     {next_state, finished, State};
-finished({net, #otr_msg_dh_commit{} = M}, State) ->
-    {next_state, finished,
-     consume_otr_msg_dh_commit(M, State)};
-finished({net, #otr_msg_dh_key{} = M}, State) ->
-    {next_state, finished,
-     consume_otr_msg_dh_key(M, State)};
-finished({net, #otr_msg_reveal_signature{} = M},
-	 State) ->
-    {next_state, finished,
-     consume_otr_msg_reveal_signature(M, State)};
-finished({net, #otr_msg_signature{} = M}, State) ->
-    {NextStateName, NState} = consume_otr_msg_signature(M,
-							finished, State),
-    {next_state, NextStateName, NState};
 finished({net, #otr_msg_data{}}, State) ->
     emit_user(State,
 	      {error, unreadable_encrypted_received}),
     emit_net(State,
 	     #otr_msg_error{s = ?OTRL_ERRCODE_MSG_NOT_IN_PRIVATE}),
-    {next_state, finished, State}.%}}}F
+    {next_state, finished, State};
+finished({net, M}, State) ->
+    handle_ake_message(M, finished, State).%}}}F
 
 %}}}F
 
 %F{{{ gen_fsm callbacks
 
-init(Opts) -> {ok, plaintext, process_opts(Opts)}.
+init(Opts) ->
+    {ok, plaintext, make_dh_keys(process_opts(Opts))}.
 
 handle_info(Info, StateName, StateData) ->
     {stop, {StateName, undefined_info, Info}, StateData}.
 
+handle_event({ake_to_net, M}, StateName, State) ->
+    emit_net(State, M), {next_state, StateName, State};
 handle_event(Event, StateName, StateData) ->
     {stop, {StateName, undefined_event, Event}, StateData}.
 
@@ -196,78 +196,63 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %}}}F
 
 %F{{{ internal functions
-consume_otr_msg_signature(#otr_msg_signature{} = M,
-			  StateName, State) ->
-    % If authstate is AUTHSTATE_AWAITING_SIG:
-    % Decrypt the encrypted signature, and verify the signature and the MACs. If everything checks out:
-    % Transition authstate to AUTHSTATE_NONE.
-    % Transition msgstate to MSGSTATE_ENCRYPTED.
-    % If there is a recent stored message, encrypt it and send it as a Data Message.
-    % Otherwise, ignore the message.
-    % If authstate is AUTHSTATE_NONE, AUTHSTATE_AWAITING_DHKEY, AUTHSTATE_AWAITING_REVEALSIG, or AUTHSTATE_V1_SETUP:
-    % Ignore the message.
-    {StateName, State}.
 
-consume_otr_msg_reveal_signature(#otr_msg_reveal_signature{} =
-				     M,
-				 State) ->
-    % If authstate is AUTHSTATE_AWAITING_REVEALSIG:
-    % Use the received value of r to decrypt the value of gx received in the D-H Commit Message, and verify the hash therein. Decrypt the encrypted signature, and verify the signature and the MACs. If everything checks out:
-    % Reply with a Signature Message.
-    % Transition authstate to AUTHSTATE_NONE.
-    % Transition msgstate to MSGSTATE_ENCRYPTED.
-    % If there is a recent stored message, encrypt it and send it as a Data Message.
-    % Otherwise, ignore the message.
-    % If authstate is AUTHSTATE_NONE, AUTHSTATE_AWAITING_DHKEY, AUTHSTATE_AWAITING_SIG, or AUTHSTATE_V1_SETUP:
-    % Ignore the message.
-    State.
+%F{{{ handle_ake_message/3
+handle_ake_message(otr_msg_query, StateName, State) ->
+    {ok, Ake} = init_ake(State),
+    otr_ake_fsm:consume(Ake, {cmd, start}),
+    {next_state, StateName, State#s{ake = Ake}};
+handle_ake_message(#otr_msg_dh_commit{} = M, StateName,
+		   State) ->
+    {ok, Ake} = init_ake(State),
+    otr_ake_fsm:consume(Ake, M),
+    {next_state, StateName, State#s{ake = Ake}};
+handle_ake_message(#otr_msg_dh_key{}, StateName,
+		   #s{ake = undefined} = State) ->
+    {next_state, StateName, State};
+handle_ake_message(#otr_msg_dh_key{} = M, StateName,
+		   #s{ake = Ake} = State) ->
+    otr_ake_fsm:consume(Ake, M),
+    {next_state, StateName, State#s{ake = Ake}};
+handle_ake_message(#otr_msg_reveal_signature{},
+		   StateName, #s{ake = undefined} = State) ->
+    {next_state, StateName, State};
+handle_ake_message(#otr_msg_reveal_signature{} = M,
+		   StateName, #s{ake = Ake} = State) ->
+    otr_ake_fsm:consume(Ake, M),
+    {next_state, StateName, State#s{ake = Ake}};
+handle_ake_message(#otr_msg_signature{}, StateName,
+		   #s{ake = undefined} = State) ->
+    {next_state, StateName, State};
+handle_ake_message(#otr_msg_signature{} = M, StateName,
+		   #s{ake = Ake} = State) ->
+    otr_ake_fsm:consume(Ake, M),
+    {next_state, StateName, State#s{ake = Ake}}.%}}}F
 
-consume_otr_msg_dh_key(#otr_msg_dh_key{} = M, State) ->
-    % If authstate is AUTHSTATE_AWAITING_DHKEY:
-    % Reply with a Reveal Signature Message and transition authstate to AUTHSTATE_AWAITING_SIG.
-    % If authstate is AUTHSTATE_AWAITING_SIG:
-    % If this D-H Key message is the same the one you received earlier (when you entered AUTHSTATE_AWAITING_SIG):
-    % Retransmit your Reveal Signature Message.
-    % Otherwise:
-    % Ignore the message.
-    % If authstate is AUTHSTATE_NONE, AUTHSTATE_AWAITING_REVEALSIG, or AUTHSTATE_V1_SETUP:
-    % Ignore the message.
-    State.
+make_dh_keys(#s{otr_ctx = Ctx} = State) ->
+    if (Ctx#otr_ctx.our_keyid < 2) or
+	 (Ctx#otr_ctx.our_dh_key == undefined)
+	 or (Ctx#otr_ctx.our_prevous_dh_key == undefined) ->
+	   NCtx = Ctx#otr_ctx{our_keyid = 2,
+			      our_dh_key = otr_crypto:dh_gen_key(),
+			      our_prevous_dh_key = otr_crypto:dh_gen_key()},
+	   State#s{otr_ctx = NCtx};
+       true -> State
+    end.
 
-consume_otr_msg_dh_commit(#otr_msg_dh_commit{} = M,
-			  State) ->
-    % If ALLOW_V2 is not set, ignore this message. Otherwise:
-    % If authstate is AUTHSTATE_NONE:
-    % Reply with a D-H Key Message, and transition authstate to AUTHSTATE_AWAITING_REVEALSIG.
-    % If authstate is AUTHSTATE_AWAITING_DHKEY:
-    % This is the trickiest transition in the whole protocol. It indicates that you have already sent a D-H Commit message to your correspondent, but that he either didn't receive it, or just didn't receive it yet, and has sent you one as well. The symmetry will be broken by comparing the hashed gx you sent in your D-H Commit Message with the one you received, considered as 32-byte unsigned big-endian values.
-    % If yours is the higher hash value:
-    % Ignore the incoming D-H Commit message, but resend your D-H Commit message.
-    % Otherwise:
-    % Forget your old gx value that you sent (encrypted) earlier, and pretend you're in AUTHSTATE_NONE; i.e. reply with a D-H Key Message, and transition authstate to AUTHSTATE_AWAITING_REVEALSIG.
-    % If authstate is AUTHSTATE_AWAITING_REVEALSIG:
-    % Retransmit your D-H Key Message (the same one as you sent when you entered AUTHSTATE_AWAITING_REVEALSIG). Forget the old D-H Commit message, and use this new one instead. There are a number of reasons this might happen, including:
-    % Your correspondent simply started a new AKE.
-    % Your correspondent resent his D-H Commit message, as specified above.
-    % On some networks, like AIM, if your correspondent is logged in multiple times, each of his clients will send a D-H Commit Message in response to a Query Message; resending the same D-H Key Message in response to each of those messages will prevent compounded confusion, since each of his clients will see each of the D-H Key Messages you send. [And the problem gets even worse if you are each logged in multiple times.]
-    % If authstate is AUTHSTATE_AWAITING_SIG or AUTHSTATE_V1_SETUP:
-    % Reply with a new D-H Key message, and transition authstate to AUTHSTATE_AWAITING_REVEALSIG.
-    State.
-
-consume_otr_msg_data(#otr_msg_data{} = M, State) ->
-    % Verify the information (MAC, keyids, ctr value, etc.) in the message.
-    % If the verification succeeds:
-    % Decrypt the message and display the human-readable part (if non-empty) to the user.
-    % Update the D-H encryption keys, if necessary.
-    % If you have not sent a message to this correspondent in some (configurable) time, send a "heartbeat" message, consisting of a Data Message encoding an empty plaintext. The heartbeat message should have the IGNORE_UNREADABLE flag set.
-    % If the received message contains a TLV type 1, forget all encryption keys for this correspondent, and transition msgstate to MSGSTATE_FINISHED.
-    % Otherwise, inform the user that an unreadable encrypted message was received, and reply with an Error Message.
-    {next_state, encrypted, State}.
-
-emit_dh_commit(State, false) -> State;
-emit_dh_commit(State, true) ->
-    % TODO send D-H Commit Message
-    State#s{auth = authstate_awaiting_dhkey}.
+init_ake(#s{ake = undefined, otr_ctx = Ctx}) ->
+    KeyId = Ctx#otr_ctx.our_keyid - 1,
+    DhKey = Ctx#otr_ctx.our_prevous_dh_key,
+    DsaKey = Ctx#otr_ctx.dsa_key,
+    Self = self(),
+    EmitToFsm = fun (X) -> otr_fsm:consume(Self, {ake, X})
+		end,
+    EmitToNet = fun (X) ->
+			gen_fsm:send_all_state_event(Self, {ake_to_net, X})
+		end,
+    otr_ake_fsm:start_link(KeyId, DhKey, DsaKey, EmitToFsm,
+			   EmitToNet);
+init_ake(#s{ake = Ake}) -> {ok, Ake}.
 
 emit_user(#s{emit_user = F, require_encryption = true},
 	  {message, M}) ->
@@ -292,6 +277,7 @@ process_opts(O) ->
 	   proplists:get_bool(error_start_ake, O),
        send_whitespace_tag =
 	   proplists:get_bool(send_whitespace_tag, O),
+       otr_ctx = proplists:get_value(otr_ctx, O),
        max_fragment_size =
 	   proplists:get_value(max_fragment_size, O,
 			       ?DEFAULT_MAX_FRAG_SIZE)}.%}}}F

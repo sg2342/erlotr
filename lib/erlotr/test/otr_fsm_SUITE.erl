@@ -104,7 +104,7 @@ pt_net_error_2(Config) ->
     R2 = receive R2 -> R2 after 500 -> timeout end.
 
 pt_net_data(Config) ->
-    ct:comment("data message from network ehilr in start "
+    ct:comment("data message from network while in start "
 	       "[plaintext]"),
     Parser = (?config(parser, Config)),
     {M, _} = (?MessageTestVector5),
@@ -112,7 +112,7 @@ pt_net_data(Config) ->
     R1 = {to_user, {error, unreadable_encrypted_received}},
     R1 = receive R1 -> R1 after 500 -> timeout end,
     R2 = {to_net,
-	  "?OTR Error:You sent sn encrypted message, "
+	  "?OTR Error:You sent an encrypted message, "
 	  "but we finished th private conversation"},
     R2 = receive R2 -> R2 after 500 -> timeout end.
 
