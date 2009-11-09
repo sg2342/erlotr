@@ -186,7 +186,7 @@ dsa_sign_1(_Config) ->
     ct:comment("DSA Sign random data, keys from testvector #1"),
     {[P, Q, G, X, Y], _, _, _} = ?DSATestVector1,
     Data = crypto:rand_bytes(1024),
-    {R, S} = otr_crypto:dsa_sign([P, Q, G, X], Data),
+    {R, S} = otr_crypto:dsa_sign([P, Q, G, X, Y], Data),
     true = otr_crypto:dsa_verify([P, Q, G, Y], Data, {R, S}).
 
 dsa_sign_2(_Config) ->

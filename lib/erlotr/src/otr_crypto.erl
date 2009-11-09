@@ -10,11 +10,13 @@
 
 -author("Stefan Grundmann <sg2342@googlemail.com>").
 
+-include("otr.hrl").
+
 -export([aes_ctr_128_decrypt/3, aes_ctr_128_encrypt/3,
 	 aes_ecb_128_decrypt/2, aes_ecb_128_encrypt/2,
-	 dh_agree/2, dh_gen_key/0, dh_gen_key/2, dsa_sign/2,
-	 dsa_verify/3, irandom/1, sha1/1, sha1/3, sha1HMAC/2,
-	 sha256/1, sha256/3, sha256HMAC/2]).
+	 dh_agree/2, dh_gen_key/0, dsa_sign/2, dsa_verify/3,
+	 irandom/1, sha1/1, sha1/3, sha1HMAC/2, sha256/1,
+	 sha256/3, sha256HMAC/2]).
 
 %F{{ { ...HMAC...
 sha1HMAC(Key, Data) -> crypto:sha_mac(Key, Data).
@@ -100,6 +102,9 @@ do_aes_ctr_128(Key, {Nonce, Counter}, Plaintext,
 %F{{{ dsa_sign, dsa_verify
 %
 % stolen from ssh-1.1.6/src/ssh_dsa.erl
+
+dsa_sign(_DsaKey = [P, Q, G, X, _], Data) ->
+    dsa_sign([P, Q, G, X], Data);
 dsa_sign(_PrivateKey = [P, Q, G, X], Data) ->
     K = irandom(160) rem Q,
     R = ipow(G, K, P) rem Q,
@@ -109,8 +114,7 @@ dsa_sign(_PrivateKey = [P, Q, G, X], Data) ->
     S = Ki * (M + X * R) rem Q,
     {R, S}.
 
-dsa_verify(_PublicKey = [P, Q, G, Y], Data,
-	      {R0, S0}) ->
+dsa_verify(_PublicKey = [P, Q, G, Y], Data, {R0, S0}) ->
     W = invert(S0, Q),
     BS = size(Data) bsl 3,
     <<M0:BS/big-unsigned-integer>> = Data,
@@ -123,22 +127,19 @@ dsa_verify(_PublicKey = [P, Q, G, Y], Data,
 
 %}}}F
 
-%F{{{ dh_gen_key, dh_agree
+%F{{{ dh_gen_key/0, dh_agree/2
+
 dh_gen_key() ->
-    {G, P} = dh_generator_and_group(), dh_gen_key(G, P).
-
-dh_gen_key(G, P) ->
+    P = (?DH_MODULUS),
     Private = irandom(isize(P) - 1, 1, 1),
-    Public = ipow(G, Private, P),
-    {Private, Public}.
-
-dh_generator_and_group() ->
-    {2,
-     2410312426921032588552076022197566074856950548502459942654116941958108831682612228890093858261341614673227141477904012196503648957050582631942730706805009223062734745341073406696246014589361659774041027169249453200378729434170325843778659198143763193776859869524088940195577346119843545301547043747207749969763750084308926339295559968882457872412993810129130294592999947926365264059284647209730384947211681434464714438488520940127459844288859336526896320919633919}.
+    Public = ipow(2, Private, P),
+    if (Public >= 2) and (Public =< (?DH_MODULUS) - 2) ->
+	   {Private, Public};
+       true -> dh_gen_key()
+    end.
 
 dh_agree(Private, PeerPub) ->
-    {_, P} = dh_generator_and_group(),
-    ipow(PeerPub, Private, P).
+    ipow(PeerPub, Private, ?DH_MODULUS).
 
 %}}}F
 
