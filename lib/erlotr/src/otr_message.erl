@@ -1,6 +1,14 @@
+%%
+%% Purpose: Off-the-Record Messaging
+%%          (http://www.cypherpunks.ca/otr/Protocol-v2-3.1.0.html)
+%%          message encode/decode library module
+%%
+
 -module(otr_message).
 
 -author("Stefan Grundmann <sg2342@googlemail.com>").
+
+-copyright("Copyright 2009 Stefan Grundmann").
 
 -include("otr_internal.hrl").
 
