@@ -71,6 +71,10 @@ aes_ctr_128_decrypt(Key, Nonce, Data) ->
 
 aes_ctr_128_encrypt(Key, Nonce, Data)
     when size(Key) == 16, size(Nonce) == 8,
+	 is_list(Data) ->
+    do_aes_ctr_128(Key, {Nonce, 0}, list_to_binary(Data), <<>>);
+aes_ctr_128_encrypt(Key, Nonce, Data)
+    when size(Key) == 16, size(Nonce) == 8,
 	 is_binary(Data) ->
     do_aes_ctr_128(Key, {Nonce, 0}, Data, <<>>).
 

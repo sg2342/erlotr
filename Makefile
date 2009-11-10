@@ -33,6 +33,7 @@ shiny: clean
 
 logdir:
 	mkdir -p log
+	cat /dev/null > log/cover.db
 
 applications:
 	for A in ${APPLICATIONS} ; do \
