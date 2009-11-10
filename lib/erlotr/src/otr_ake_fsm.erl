@@ -69,7 +69,7 @@ awaiting_dhkey(#otr_msg_dh_key{gy = GY}, State)
 awaiting_dhkey(#otr_msg_dh_key{} = M, State) ->
     {X, Gx} = State#s.dh_key,
     Gy = M#otr_msg_dh_key.gy,
-    [CX, _, M1X, M2X, _, _] = CM1M2 =
+    [CX, _, M1X, M2X, _, _, _] = CM1M2 =
 				  compute_keys(otr_crypto:dh_agree(X, Gy)),
     KeyId = State#s.key_id,
     {ok, EncSig, Mac} = enc_sig_and_mac([CX, M1X, M2X], Gx,
@@ -108,7 +108,7 @@ awaiting_revealsig(#otr_msg_reveal_signature{} = M,
       {ok, Gx} ->
 	  {Y, Gy} = State#s.dh_key,
 	  CM1M2 = compute_keys(otr_crypto:dh_agree(Y, Gx)),
-	  [CX, CY, M1X, M2X, M1Y, M2Y] = CM1M2,
+	  [CX, CY, M1X, M2X, M1Y, M2Y, SSID] = CM1M2,
 	  case check_mac_and_dec_sig([CX, M1X, M2X], Gx, Gy,
 				     M#otr_msg_reveal_signature.enc_sig,
 				     M#otr_msg_reveal_signature.mac)
@@ -120,7 +120,7 @@ awaiting_revealsig(#otr_msg_reveal_signature{} = M,
 						KeyIdy, State#s.dsa_key),
 		emit_net(State,
 			 #otr_msg_signature{enc_sig = ES, mac = Mac}),
-		emit_fsm(State, {encrypted, {KeyIdx, Gx, PubKeyFP}}),
+		emit_fsm(State, {encrypted, {KeyIdx, Gx, PubKeyFP, SSID}}),
 		{next_state, none, prune_state(State)}
 	  end
     end;
@@ -144,14 +144,14 @@ awaiting_sig(#otr_msg_dh_key{gy = GY},
 awaiting_sig(#otr_msg_signature{} = M, State) ->
     GY = State#s.dh_pubkey,
     {_, GX} = State#s.dh_key,
-    [_, CY, _, _, M1Y, M2Y] = State#s.cm1m2,
+    [_, CY, _, _, M1Y, M2Y, SSID] = State#s.cm1m2,
     case check_mac_and_dec_sig([CY, M1Y, M2Y], GY, GX,
 			       M#otr_msg_signature.enc_sig,
 			       M#otr_msg_signature.mac)
 	of
       {error, _} -> {next_state, awaiting_sig, State};
       {ok, KeyIdy, PubKeyFP} ->
-	  emit_fsm(State, {encrypted, {KeyIdy, GY, PubKeyFP}}),
+	  emit_fsm(State, {encrypted, {KeyIdy, GY, PubKeyFP, SSID}}),
 	  {next_state, none, prune_state(State)}
     end;
 %F{{{ awaiting_sig/2 ignored messages
@@ -270,13 +270,14 @@ pack_pubkey([P, Q, G, _, Y]) ->
 
 compute_keys(S) ->
     MpiS = otr_util:mpint(S),
+    SSID = otr_crypto:sha256(<<0, MpiS/binary>>),
     <<CX:16/binary, CY:16/binary>> = otr_crypto:sha256(<<1,
 							 MpiS/binary>>),
     M1X = otr_crypto:sha256(<<2, MpiS/binary>>),
     M2X = otr_crypto:sha256(<<3, MpiS/binary>>),
     M1Y = otr_crypto:sha256(<<4, MpiS/binary>>),
     M2Y = otr_crypto:sha256(<<5, MpiS/binary>>),
-    [CX, CY, M1X, M2X, M1Y, M2Y].
+    [CX, CY, M1X, M2X, M1Y, M2Y, SSID].
 
 process_dh_commit(State, M) ->
     {_, Gy} = State#s.dh_key,
