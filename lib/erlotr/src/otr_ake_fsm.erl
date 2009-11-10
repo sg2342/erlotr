@@ -1,5 +1,5 @@
 %%
-%% Purpose: Off-the-Record Messaging 
+%% Purpose: Off-the-Record Messaging
 %%          (http://www.cypherpunks.ca/otr/Protocol-v2-3.1.0.html)
 %%          Authenticated Key Exchange State Machine
 %%
@@ -215,12 +215,15 @@ check_mac_and_dec_sig([C, M1, M2], G1, G2, ES, Mac) ->
 	  PKz = size(ES) - 44,
 	  <<PK:PKz/binary, KeyId:32, R:160, S:160>> = Sig,
 	  M = make_m(M1, G1, G2, KeyId, PK),
-	  {ok, PubKey} = unpack_pubkey(PK),
-	  case otr_crypto:dsa_verify(PubKey, M, {R, S}) of
-	    false -> {error, dsa_verify};
-	    true ->
-		<<0:16, HashThis/binary>> = PK,
-		{ok, KeyId, otr_crypto:sha1(HashThis)}
+	  case unpack_pubkey(PK) of
+	    error -> {error, invalid_dsa_pubkey};
+	    {ok, PubKey} ->
+		case otr_crypto:dsa_verify(PubKey, M, {R, S}) of
+		  false -> {error, dsa_verify};
+		  true ->
+		      <<0:16, HashThis/binary>> = PK,
+		      {ok, KeyId, otr_crypto:sha1(HashThis)}
+		end
 	  end;
       _ -> {error, mac_missmatch}
     end.

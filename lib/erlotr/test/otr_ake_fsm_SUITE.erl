@@ -43,8 +43,9 @@ all() ->
      awaiting_revealsig_revealsig_3,
      awaiting_revealsig_ignored, awaiting_sig_start,
      awaiting_sig_dh_commit, awaiting_sig_dh_key,
-     awaiting_sig_ignored, awaiting_sig_sig1, 
-     complete_ake, cover].
+     awaiting_sig_ignored, awaiting_sig_sig1,
+     awaiting_sig_sig2, awaiting_sig_sig3, complete_ake,
+     cover].
 
 %F{{{ init_per_testcase/2
 
@@ -57,6 +58,10 @@ init_per_testcase(awaiting_sig_dh_key, Config) ->
 init_per_testcase(awaiting_sig_ignored, Config) ->
     setup_2ake(Config, []);
 init_per_testcase(awaiting_sig_sig1, Config) ->
+    setup_2ake(Config, []);
+init_per_testcase(awaiting_sig_sig2, Config) ->
+    setup_2ake(Config, []);
+init_per_testcase(awaiting_sig_sig3, Config) ->
     setup_2ake(Config, []);
 init_per_testcase(awaiting_revealsig_revealsig_3,
 		  Config) ->
@@ -411,11 +416,11 @@ awaiting_sig_ignored(Config) ->
     Inject1(#otr_msg_reveal_signature{}),
     ok = receive _ -> notok after 500 -> ok end,
     ok.
-    
-    
+
 awaiting_sig_sig1(Config) ->
-    ct:comment("process SIGNATURE message in state [awaiting_sig], 
-    MAC of the SIGNATURE message is wrong"),
+    ct:comment("process SIGNATURE message in state [awaiting_"
+	       "sig], \n    MAC of the SIGNATURE message "
+	       "is wrong"),
     Ake1 = (?config(ake1, Config)),
     Ake2 = (?config(ake2, Config)),
     Inject1 = fun (X) -> otr_ake_fsm:consume(Ake1, X) end,
@@ -431,14 +436,99 @@ awaiting_sig_sig1(Config) ->
     Inject2(DhCommit),
     {ok, DhKey} = Receive2(),
     Inject1(DhKey),
-    {ok, #otr_msg_reveal_signature{} = RevealSignature} = Receive1(),
+    {ok, #otr_msg_reveal_signature{} = RevealSignature} =
+	Receive1(),
     Inject2(RevealSignature),
     {ok, Signature} = Receive2(),
-    ok = receive {to_fsm2, _} -> ok after 500 -> timeout end,
+    ok = receive
+	   {to_fsm2, _} -> ok after 500 -> timeout
+	 end,
     Inject1(Signature#otr_msg_signature{mac = <<0:20>>}),
     ok = receive _ -> notok after 500 -> ok end.
-    %}}}F
 
+awaiting_sig_sig2(Config) ->
+    ct:comment("process SIGNATURE message in state [awaiting_"
+	       "sig], when extraction of the dsa pubkey "
+	       "fails"),
+    Ake1 = (?config(ake1, Config)),
+    Ake2 = (?config(ake2, Config)),
+    Inject1 = fun (X) -> otr_ake_fsm:consume(Ake1, X) end,
+    Receive1 = fun () ->
+		       receive {to_net1, X} -> {ok, X} after 500 -> timeout end
+	       end,
+    Inject2 = fun (X) -> otr_ake_fsm:consume(Ake2, X) end,
+    Receive2 = fun () ->
+		       receive {to_net2, X} -> {ok, X} after 500 -> timeout end
+	       end,
+    Inject1({cmd, start}),
+    {ok, DhCommit} = Receive1(),
+    Inject2(DhCommit),
+    {ok, DhKey} = Receive2(),
+    Inject1(DhKey),
+    {ok, RevealSignature} = Receive1(),
+    {_, DhPub1} = (?config(dh_key1, Config)),
+    {DhPriv2, _} = (?config(dh_key2, Config)),
+    S = otr_crypto:dh_agree(DhPriv2, DhPub1),
+    MpiS = otr_util:mpint(S),
+    <<CX:16/binary, _:16/binary>> = otr_crypto:sha256(<<1,
+							MpiS/binary>>),
+    M2X = otr_crypto:sha256(<<3, MpiS/binary>>),
+    Sig = otr_crypto:aes_ctr_128_decrypt(CX, <<0:64>>,
+					 RevealSignature#otr_msg_reveal_signature.enc_sig),
+    <<X:32, RSig/binary>> = Sig,
+    NSig = <<(X + 1):32, RSig/binary>>,
+    EncSig = otr_crypto:aes_ctr_128_decrypt(CX, <<0:64>>,
+					    NSig),
+    <<Mac:20/binary, _/binary>> = otr_crypto:sha256HMAC(M2X,
+							<<(size(EncSig)):32,
+							  EncSig/binary>>),
+    Inject2(RevealSignature#otr_msg_reveal_signature{enc_sig
+							 = EncSig,
+						     mac = Mac}),
+    ok = receive _ -> notok after 500 -> ok end.
+
+awaiting_sig_sig3(Config) ->
+    ct:comment("process SIGNATURE message in state [awaiting_"
+	       "sig], when signature does not verify"),
+    Ake1 = (?config(ake1, Config)),
+    Ake2 = (?config(ake2, Config)),
+    Inject1 = fun (X) -> otr_ake_fsm:consume(Ake1, X) end,
+    Receive1 = fun () ->
+		       receive {to_net1, X} -> {ok, X} after 500 -> timeout end
+	       end,
+    Inject2 = fun (X) -> otr_ake_fsm:consume(Ake2, X) end,
+    Receive2 = fun () ->
+		       receive {to_net2, X} -> {ok, X} after 500 -> timeout end
+	       end,
+    Inject1({cmd, start}),
+    {ok, DhCommit} = Receive1(),
+    Inject2(DhCommit),
+    {ok, DhKey} = Receive2(),
+    Inject1(DhKey),
+    {ok, RevealSignature} = Receive1(),
+    {_, DhPub1} = (?config(dh_key1, Config)),
+    {DhPriv2, _} = (?config(dh_key2, Config)),
+    S = otr_crypto:dh_agree(DhPriv2, DhPub1),
+    MpiS = otr_util:mpint(S),
+    <<CX:16/binary, _:16/binary>> = otr_crypto:sha256(<<1,
+							MpiS/binary>>),
+    M2X = otr_crypto:sha256(<<3, MpiS/binary>>),
+    Sig = otr_crypto:aes_ctr_128_decrypt(CX, <<0:64>>,
+					 RevealSignature#otr_msg_reveal_signature.enc_sig),
+    RSigZ = size(Sig) - 4,
+    <<RSig:RSigZ/binary, X:32>> = Sig,
+    NSig = <<RSig/binary, (X + 1):32>>,
+    EncSig = otr_crypto:aes_ctr_128_decrypt(CX, <<0:64>>,
+					    NSig),
+    <<Mac:20/binary, _/binary>> = otr_crypto:sha256HMAC(M2X,
+							<<(size(EncSig)):32,
+							  EncSig/binary>>),
+    Inject2(RevealSignature#otr_msg_reveal_signature{enc_sig
+							 = EncSig,
+						     mac = Mac}),
+    ok = receive _ -> notok after 500 -> ok end.
+
+    %}}}F
 
 complete_ake(Config) ->
     ct:comment("complete Authenticated Key Exchange"),
@@ -476,8 +566,6 @@ complete_ake(Config) ->
 	   after 500 -> timeout
 	 end,
     ok.
-
-    
 
 cover(_Config) ->
     ct:comment("achive 100% coverage: call code_change/4, "
