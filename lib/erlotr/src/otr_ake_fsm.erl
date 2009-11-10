@@ -151,7 +151,7 @@ awaiting_sig(#otr_msg_signature{} = M, State) ->
 	of
       {error, _} -> {next_state, awaiting_sig, State};
       {ok, KeyIdy, PubKeyFP} ->
-	  emit_fsm(State, {encrypted, {KeyIdy, GX, PubKeyFP}}),
+	  emit_fsm(State, {encrypted, {KeyIdy, GY, PubKeyFP}}),
 	  {next_state, none, prune_state(State)}
     end;
 %F{{{ awaiting_sig/2 ignored messages

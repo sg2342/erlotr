@@ -18,7 +18,7 @@
 	 irandom/1, sha1/1, sha1/3, sha1HMAC/2, sha256/1,
 	 sha256/3, sha256HMAC/2]).
 
-%F{{ { ...HMAC...
+%F{{{ ...HMAC...
 sha1HMAC(Key, Data) -> crypto:sha_mac(Key, Data).
 
 sha256HMAC(Key, Data) when size(Key) > 64 ->

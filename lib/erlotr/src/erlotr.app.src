@@ -1,7 +1,7 @@
 {application, erlotr,
  [
     {description, "OTR v2"},
-     {vsn, "%VSN%"},
+    {vsn, "%VSN%"},
     {id, "ERLOTR"},
     {modules, [otr,
                otr_app,
