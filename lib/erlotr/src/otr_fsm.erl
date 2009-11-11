@@ -32,7 +32,8 @@
 	{emit_user, emit_net, require_encryption,
 	 whitespace_start_ake, error_start_ake, dm_keys = [],
 	 max_fragment_size, send_whitespace_tag, otr_ctx,
-	 got_plaintext = false, pt = [], ake, ssid}).
+	 got_plaintext = false, pt = [], ake, ssid,
+	 reveal_macs = <<>>}).
 
 start_link(Opts) ->
     gen_fsm:start_link(?MODULE, Opts, []).
@@ -40,15 +41,13 @@ start_link(Opts) ->
 consume(Pid, M) -> gen_fsm:send_event(Pid, M).
 
 %F{{{ states
-
-plaintext({ake, {encrypted, TheirKM}},
-	  #s{pt = []} = State) ->
-    ake_completed(TheirKM, State);
 plaintext({ake, {encrypted, TheirKM}},
 	  #s{pt = PT} = State) ->
-    {_, _, NState} = ake_completed(TheirKM, State),
-    % TODO send pt array
-    {next_state, encrypted, NState#s{pt = []}};
+    {next_state, encrypted,
+     lists:foldr(fun (M, S) ->
+			 {ok, NS} = send_data_msg(S, M), NS
+		 end,
+		 ake_completed(TheirKM, State), PT)};
 %F{{{ plaintext({user ....
 plaintext({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
@@ -125,7 +124,7 @@ encrypted({net, #otr_msg_error{s = M}}, State) ->
     {next_state, encrypted, State};
 encrypted({net, #otr_msg_data{} = M}, State) ->
     {ok, NState} = recv_data_msg(State, M),
-    {next_state, encrypted, State};
+    {next_state, encrypted, NState};
 encrypted({net, M}, State) ->
     handle_ake_message(M, encrypted, State).%}}}F
 
@@ -140,8 +139,8 @@ finished({user, stop_otr}, State) ->
 finished({user, {message, M}}, State) ->
     emit_user(State,
 	      {info, message_can_not_be_sent_this_time}),
-    %TODO: store the plaintext message for possible retransmission
-    {next_state, finished, State};  %}}}F
+    {next_state, finished,
+     State#s{pt = [M | State#s.pt]}};  %}}}F
 %F{{{ finished({net
 finished({net, {plain, M}}, State) ->
     emit_user(State, {message, M, [warning_unencrypted]}),
@@ -197,40 +196,112 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 
 %F{{{ internal functions
 
-recv_data_msg(#s{otr_ctx = Ctx} = State, M) ->
-    {ok, DmK} = get_dmk(State,
-			M#otr_msg_data.recipient_keyid,
-			M#otr_msg_data.sender_keyid),
-    Ctr = M#otr_msg_data.ctr_init,
-    PlainText =
-	otr_crypto:aes_ctr_128_decrypt(DmK#dm_keys.rx_key, Ctr,
-				       M#otr_msg_data.enc_data),
-    emit_user(State,
-	      {message, lists:delete(0, binary_to_list(PlainText))}),
-    {ok, State}.
+%F{{{ rotate_keys/4
+rotate_keys(State, OId, TId, Y) ->
+    io:format("rotate_keys(~p, ~p) ~n ~n", [OId, TId]),
+    rotate_their_keys(rotate_our_keys(State, OId), TId, Y).
+
+rotate_our_keys(#s{otr_ctx =
+		       #otr_ctx{our_keyid = OId} = Ctx} =
+		    State,
+		OId) ->
+    NCtx = Ctx#otr_ctx{our_keyid = OId + 1,
+		       our_prevous_dh = Ctx#otr_ctx.our_dh,
+		       our_dh = otr_crypto:dh_gen_key()},
+    {OldDmKL, DmKL} = lists:partition(fun ({{O, _}, _}) ->
+					      O == OId - 1
+				      end,
+				      State#s.dm_keys),
+    RevealMacs = lists:foldr(fun ({_, DmK}, Acc) ->
+				     if DmK#dm_keys.rx_ctr > 0 ->
+					    <<(DmK#dm_keys.rx_mac)/binary,
+					      Acc/binary>>;
+					true -> Acc
+				     end
+			     end,
+			     <<>>, OldDmKL),
+    State#s{otr_ctx = NCtx, dm_keys = DmKL,
+	    reveal_macs =
+		<<RevealMacs/binary, (State#s.reveal_macs)/binary>>};
+rotate_our_keys(State, _) -> State.
+
+rotate_their_keys(#s{otr_ctx =
+			 #otr_ctx{their_keyid = TId} = Ctx} =
+		      State,
+		  TId, Y) ->
+    NCtx = Ctx#otr_ctx{their_keyid = TId + 1,
+		       their_previous_y = Ctx#otr_ctx.their_y, their_y = Y},
+    {OldDmKL, DmKL} = lists:partition(fun ({{_, T}, _}) ->
+					      T == TId - 1
+				      end,
+				      State#s.dm_keys),
+    RevealMacs = lists:foldr(fun ({_, DmK}, Acc) ->
+				     if DmK#dm_keys.rx_ctr > 0 ->
+					    <<(DmK#dm_keys.rx_mac)/binary,
+					      Acc/binary>>;
+					true -> Acc
+				     end
+			     end,
+			     <<>>, OldDmKL),
+    State#s{dm_keys = DmKL, otr_ctx = NCtx,
+	    reveal_macs =
+		<<RevealMacs/binary, (State#s.reveal_macs)/binary>>};
+rotate_their_keys(State, _, _) -> State.
+
+%}}}F
+
+recv_data_msg(State, M) ->
+    OId = M#otr_msg_data.recipient_keyid,
+    TId = M#otr_msg_data.sender_keyid,
+    case get_dmk(State, OId, TId) of
+      error -> {rejected, no_keys};
+      {ok, DmK} ->
+	  get_dmk(State, OId,
+		  TId), %TODO: reject if error
+	  <<Ctr:64>> = M#otr_msg_data.ctr_init,
+	  Mac = otr_crypto:sha1HMAC(DmK#dm_keys.rx_mac,
+				    otr_message:encode_data_for_hmac(M)),
+	  if Mac /= M#otr_msg_data.mac ->
+		 {rejected, mac_missmatch};
+	     Ctr =< DmK#dm_keys.rx_ctr -> {rejected, ctr_to_low};
+	     true ->
+		 NS0 = rotate_keys(State, OId, TId, M#otr_msg_data.dhy),
+		 NS1 = NS0#s{dm_keys =
+				 lists:keystore({OId, TId}, 1, State#s.dm_keys,
+						{{OId, TId},
+						 DmK#dm_keys{rx_ctr = Ctr}})},
+		 Dec = otr_crypto:aes_ctr_128_decrypt(DmK#dm_keys.rx_key,
+						      <<Ctr:64>>,
+						      M#otr_msg_data.enc_data),
+		 {PT, TLV} = otr_tlv:decode(Dec),
+		 emit_user(State, {message, PT}),
+		 {ok, NS1}
+	  end
+    end.
 
 send_data_msg(#s{otr_ctx = Ctx} = State, M) ->
     OId = Ctx#otr_ctx.our_keyid - 1,
     TId = Ctx#otr_ctx.their_keyid,
     {ok, DmK} = get_dmk(State, OId, TId),
     Ctr = DmK#dm_keys.tx_ctr + 1,
-    EncM =
-	otr_crypto:aes_ctr_128_encrypt(DmK#dm_keys.tx_key,
-				       <<Ctr:64>>, M),
-    Y = element(2, Ctx#otr_ctx.our_dh),
-    MpiY = otr_util:mpint(Y),
+    DM0 = #otr_msg_data{flags = 0, sender_keyid = OId,
+			recipient_keyid = TId,
+			dhy = element(2, Ctx#otr_ctx.our_dh),
+			enc_data =
+			    otr_crypto:aes_ctr_128_encrypt(DmK#dm_keys.tx_key,
+							   <<Ctr:64>>,
+							   otr_tlv:encode(M)),
+			ctr_init = <<Ctr:64>>},
     Mac = otr_crypto:sha1HMAC(DmK#dm_keys.tx_mac,
-			      <<2:16, 3:8, 0:8, OId:32, TId:32, MpiY/binary,
-				Ctr:64, (size(EncM)):32, EncM/binary>>),
-    NDmK = DmK#dm_keys{tx_ctr = Ctr},
-    DmKL = lists:keystore({OId, TId}, 1, State#s.dm_keys,
-			  {{OId, TId}, NDmK}),
-    DataMessage = #otr_msg_data{flags = 0,
-				sender_keyid = OId, recipient_keyid = TId,
-				dhy = Y, enc_data = EncM, ctr_init = <<Ctr:64>>,
-				mac = Mac, old_mac_keys = <<>>},
-    emit_net(State, DataMessage),
-    {ok, State#s{dm_keys = DmKL}}.
+			      otr_message:encode_data_for_hmac(DM0)),
+    emit_net(State,
+	     DM0#otr_msg_data{mac = Mac,
+			      old_mac_keys = State#s.reveal_macs}),
+    {ok,
+     State#s{reveal_macs = <<>>,
+	     dm_keys =
+		 lists:keystore({OId, TId}, 1, State#s.dm_keys,
+				{{OId, TId}, DmK#dm_keys{tx_ctr = Ctr}})}}.
 
 get_dmk(State, OurKeyId, TheirKeyId) ->
     case lists:keyfind({OurKeyId, TheirKeyId}, 1,
@@ -240,8 +311,7 @@ get_dmk(State, OurKeyId, TheirKeyId) ->
       {{OurKeyId, TheirKeyId}, V} -> {ok, V}
     end.
 
-compute_dmk(#s{otr_ctx = Ctx} = State, OurKeyId,
-	    TheirKeyId) ->
+compute_dmk(#s{otr_ctx = Ctx}, OurKeyId, TheirKeyId) ->
     case get_dh_keys(Ctx, OurKeyId, TheirKeyId) of
       error -> error;
       {ok, {OurPriv, OurPub}, TheirPub} ->

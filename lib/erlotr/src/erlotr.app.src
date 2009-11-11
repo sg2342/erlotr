@@ -12,7 +12,8 @@
                otr_message,
                otr_parser_fsm,
                otr_ake_fsm,
-               otr_fsm]},
+               otr_fsm,
+			   otr_tlv]},
     {registered, [otr_sup]},
     {applications, [kernel, stdlib, crypto]},
     {mod, {otr_app, []}}
