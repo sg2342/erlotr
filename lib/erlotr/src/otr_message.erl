@@ -23,6 +23,8 @@
 
 -export([encode/1, encode/2, parse/1]).
 
+-export([encode_data_for_hmac/1]).
+
 encode(M) -> do_encode(M).
 
 encode(M, MaxFragmentSize) ->
@@ -34,6 +36,7 @@ parse(M) when is_list(M) ->
       plain -> plain;
       Else -> Else
     end.
+
 
 %F{{{ encode code
 do_encode({plain, M}) -> {ok, M};
@@ -59,17 +62,18 @@ do_encode(#otr_msg_signature{enc_sig = EncSig,
 			     mac = Mac}) ->
     do_encode_bin(<<2:16, (?TYPE_SIGNATURE),
 		    (size(EncSig)):32, EncSig/binary, Mac/binary>>);
-do_encode(#otr_msg_data{flags = Flags,
-			sender_keyid = SenderKeyId,
-			recipient_keyid = RecipientKeyId, dhy = Dhy,
-			ctr_init = Ctr, enc_data = Data, mac = Mac,
-			old_mac_keys = OldMacKeys}) ->
-    MpiDhy = otr_util:mpint(Dhy),
-    do_encode_bin(<<2:16, (?TYPE_DATA), Flags:8,
-		    SenderKeyId:32, RecipientKeyId:32, MpiDhy/binary,
-		    Ctr:8/binary, (size(Data)):32, Data/binary,
+do_encode(#otr_msg_data{ mac = Mac, old_mac_keys = OldMacKeys} = M) ->
+    do_encode_bin( <<(encode_data_for_hmac(M))/binary,
 		    Mac:20/binary, (size(OldMacKeys)):32,
 		    OldMacKeys/binary>>).
+
+encode_data_for_hmac(#otr_msg_data{flags = Flags,
+			sender_keyid = SenderKeyId,
+			recipient_keyid = RecipientKeyId, dhy = Dhy,
+			ctr_init = Ctr, enc_data = Data}) ->
+    MpiDhy = otr_util:mpint(Dhy),
+    <<2:16, (?TYPE_DATA), Flags:8, SenderKeyId:32, RecipientKeyId:32, 
+      MpiDhy/binary, Ctr:8/binary, (size(Data)):32, Data/binary>>.
 
 do_encode_bin(Bin) ->
     {ok, "?OTR:" ++ base64:encode_to_string(Bin) ++ "."}.
