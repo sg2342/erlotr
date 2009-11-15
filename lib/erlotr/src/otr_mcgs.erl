@@ -130,13 +130,13 @@ handle_call({decrypt,
     end;
 handle_call(_Call, _From, _State) ->
     % {reply, Reply, NewState}
-    {stop, {invalid_call, _Call}, _State}.
+    {stop, {undefined_call, _Call}, _State}.
 
 handle_info(_Info, _State) ->
-    {stop, {invalid_info, _Info}, _State}.
+    {stop, {undefined_info, _Info}, _State}.
 
 handle_cast(_Cast, _State) ->
-    {stop, {invalid_cast, _Cast}, _State}.
+    {stop, {undefined_cast, _Cast}, _State}.
 
 terminate(_Reason, _State) -> ok.
 
@@ -206,6 +206,10 @@ get_dh_keys(#s{their_id = T, our_id = O} = State, O,
 get_dh_keys(#s{their_id = T, our_id = O} = State, OO, T)
     when OO == O - 1 ->
     {ok, State#s.previous_dh, State#s.y};
+% TODO: about the follwoing 2 cases: 
+%       i'm not sure if the protocoll even allows to reach a
+%       state where these keys might be requested...
+%       but since we have them...
 get_dh_keys(#s{their_id = T, our_id = O} = State, O, TT)
     when (TT == T - 1) and State#s.previous_y /=
 	   undefined ->
