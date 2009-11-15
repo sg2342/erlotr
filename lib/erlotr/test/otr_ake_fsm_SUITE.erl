@@ -557,14 +557,18 @@ complete_ake(Config) ->
     Inject2(RevealSignature),
     {ok, Signature} = Receive2(),
     {ok, SSID} = receive
-	   {to_fsm2, {encrypted, {KeyId1, DhPub1, DsaFP1, S1}}} -> {ok, S1}
-	   after 500 -> timeout
-	 end,
+		   {to_fsm2,
+		    {encrypted, {KeyId2, _, KeyId1, DhPub1, DsaFP1, S1}}} ->
+		       {ok, S1}
+		   after 500 -> timeout
+		 end,
     Inject1(Signature),
     {ok, SSID} = receive
-	   {to_fsm1, {encrypted, {KeyId2, DhPub2, DsaFP2, S2}}} -> {ok, S2}
-	   after 500 -> timeout
-	 end,
+		   {to_fsm1,
+		    {encrypted, {KeyId1, _, KeyId2, DhPub2, DsaFP2, S2}}} ->
+		       {ok, S2}
+		   after 500 -> timeout
+		 end,
     ok.
 
 cover(_Config) ->

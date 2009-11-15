@@ -70,7 +70,7 @@ awaiting_dhkey(#otr_msg_dh_key{} = M, State) ->
     {X, Gx} = State#s.dh_key,
     Gy = M#otr_msg_dh_key.gy,
     [CX, _, M1X, M2X, _, _, _] = CM1M2 =
-				  compute_keys(otr_crypto:dh_agree(X, Gy)),
+				     compute_keys(otr_crypto:dh_agree(X, Gy)),
     KeyId = State#s.key_id,
     {ok, EncSig, Mac} = enc_sig_and_mac([CX, M1X, M2X], Gx,
 					Gy, KeyId, State#s.dsa_key),
@@ -120,7 +120,10 @@ awaiting_revealsig(#otr_msg_reveal_signature{} = M,
 						KeyIdy, State#s.dsa_key),
 		emit_net(State,
 			 #otr_msg_signature{enc_sig = ES, mac = Mac}),
-		emit_fsm(State, {encrypted, {KeyIdx, Gx, PubKeyFP, SSID}}),
+		emit_fsm(State,
+			 {encrypted,
+			  {State#s.key_id, State#s.dh_key, KeyIdx, Gx, PubKeyFP,
+			   SSID}}),
 		{next_state, none, prune_state(State)}
 	  end
     end;
@@ -151,7 +154,10 @@ awaiting_sig(#otr_msg_signature{} = M, State) ->
 	of
       {error, _} -> {next_state, awaiting_sig, State};
       {ok, KeyIdy, PubKeyFP} ->
-	  emit_fsm(State, {encrypted, {KeyIdy, GY, PubKeyFP, SSID}}),
+	  emit_fsm(State,
+		   {encrypted,
+		    {State#s.key_id, State#s.dh_key, KeyIdy, GY, PubKeyFP,
+		     SSID}}),
 	  {next_state, none, prune_state(State)}
     end;
 %F{{{ awaiting_sig/2 ignored messages
