@@ -111,7 +111,7 @@ decrypt_1(_Config) ->
     ok = otr_mcgs:set_keys(mcgs1, {1, Dh1, 1, Y2}),
     ok = otr_mcgs:set_keys(mcgs2, {1, Dh2, 1, Y1}),
     {ok, M} = otr_mcgs:encrypt(mcgs1, {"foo", [], 0}),
-    {rejected, no_keys} = otr_mcgs:decrypt(mcgs2,
+    {rejected, no_keys, _} = otr_mcgs:decrypt(mcgs2,
 					   M#otr_msg_data{sender_keyid = 88}).
 
 decrypt_2(_Config) ->
@@ -120,7 +120,7 @@ decrypt_2(_Config) ->
     ok = otr_mcgs:set_keys(mcgs1, {1, Dh1, 1, Y2}),
     ok = otr_mcgs:set_keys(mcgs2, {1, Dh2, 1, Y1}),
     {ok, M} = otr_mcgs:encrypt(mcgs1, {"foo", [], 0}),
-    {rejected, mac_missmatch} = otr_mcgs:decrypt(mcgs2,
+    {rejected, mac_missmatch, _} = otr_mcgs:decrypt(mcgs2,
 						 M#otr_msg_data{mac =
 								    <<0:160>>}).
 
@@ -131,7 +131,7 @@ decrypt_3(_Config) ->
     ok = otr_mcgs:set_keys(mcgs2, {1, Dh2, 1, Y1}),
     {ok, M1} = otr_mcgs:encrypt(mcgs1, {"foo", [], 0}),
     {ok, _} = otr_mcgs:decrypt(mcgs2, M1),
-    {rejected, ctr_to_low} = otr_mcgs:decrypt(mcgs2, M1).
+    {rejected, ctr_to_low, _} = otr_mcgs:decrypt(mcgs2, M1).
 
 decrypt_4(_Config) ->
     {ok, {1, Dh1 = {_, Y1}}} = otr_mcgs:get_key(mcgs1),

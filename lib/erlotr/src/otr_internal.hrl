@@ -15,9 +15,12 @@
 -record(otr_msg_data, {flags, sender_keyid, recipient_keyid, 
 		       dhy, ctr_init, enc_data, mac, old_mac_keys}).
 
--define(OTRL_ERRCODE_MSG_NOT_IN_PRIVATE, "You sent an encrypted message, "
-        "but we finished th private conversation").
-
+-define(ERR_MSG_UNEXPECTED, " You sent unexpected encrypted data to us").
+-define(ERR_MSG_NOT_IN_PRIVATE, " You sent an encrypted message, "
+        "but we finished the private conversation").
+-define(ERR_MSG_MALFORMED, " You transmitted a malformed data message").
+-define(ERR_MSG_UNREADABLE, " You transmitted an unreadable "
+        "encrypted message.").
 
 -define(DEFAULT_MAX_FRAG_SIZE, 1024).
 

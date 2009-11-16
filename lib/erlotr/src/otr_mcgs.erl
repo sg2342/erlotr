@@ -103,18 +103,19 @@ handle_call({encrypt, {M, TLV, Flags}}, _From, State) ->
 				{K, Dmk#dmk{tx_ctr = Ctr}})}};
 handle_call({decrypt,
 	     #otr_msg_data{recipient_keyid = OId, sender_keyid = TId,
-			   ctr_init = <<Ctr:64>>} =
+			   ctr_init = <<Ctr:64>>, flags = Flags} =
 		 M},
 	    _From, State) ->
+    F = if (Flags == 1) -> ignore_unreadable; true -> Flags end,
     case get_dmk(State, OId, TId) of
-      error -> {reply, {rejected, no_keys}, State};
+      error -> {reply, {rejected, no_keys, F}, State};
       {ok, Dmk} ->
 	  Mac = otr_crypto:sha1HMAC(Dmk#dmk.rx_mac,
 				   otr_message:encode_data_for_hmac(M)),
 	  if Mac /= M#otr_msg_data.mac ->
-		 {reply, {rejected, mac_missmatch}, State};
+		 {reply, {rejected, mac_missmatch, F}, State};
 	     Ctr =< Dmk#dmk.rx_ctr ->
-		 {reply, {rejected, ctr_to_low}, State};
+		 {reply, {rejected, ctr_to_low, F}, State};
 	     true ->
 		 Data = otr_crypto:aes_ctr_128_decrypt(Dmk#dmk.rx_key,
 						       <<Ctr:64>>,

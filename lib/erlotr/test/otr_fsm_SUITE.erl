@@ -33,13 +33,20 @@ end_per_suite(Config) ->
 
 all() ->
     [pt_usr_1, pt_usr_2, pt_usr_3, pt_usr_start,
-     pt_usr_stop, pt_net_1, pt_net_error_1, pt_net_error_2,
-     pt_net_data, pt_net_dh_key, pt_net_reveal_signature,
-     pt_net_signature, pt_net_tagged_ws_1,
-     pt_net_tagged_ws_2, pt_net_tagged_ws_3, pt_net_query_1,
-     pt_net_query_2, pt_ake_msg, enc_usr_start,
+     pt_usr_stop, pt_net_1, pt_net_malfored, pt_net_error_1,
+     pt_net_error_2, pt_net_data, pt_net_dh_key,
+     pt_net_reveal_signature, pt_net_signature,
+     pt_net_tagged_ws_1, pt_net_tagged_ws_2,
+     pt_net_tagged_ws_3, pt_net_query_1, pt_net_query_2,
+     pt_ake_msg_1, pt_ake_msg_2, enc_usr_start, enc_usr_stop,
      enc_net_plain, enc_net_tagged_ws_1, enc_net_tagged_ws_2,
-     enc_net_error_1, enc_net_error_2, cover].
+     enc_net_error_1, enc_net_error_2, enc_net_malformed,
+     enc_net_ignore_unreadable, enc_net_unreadable,
+     fin_usr_start, fin_usr_stop, fin_usr_msg, fin_net_plain,
+     fin_net_error_1, fin_net_error_2, fin_net_tagged_ws_1,
+     fin_net_tagged_ws_2, fin_net_data, fin_net_ake,
+     fragmented, padded, fin_net_malformed, heartbeat,
+     cover].
 
 %F{{{ init_per_testcase/2
 init_per_testcase(pt_usr_2, Config) ->
@@ -48,19 +55,20 @@ init_per_testcase(pt_net_error_2, Config) ->
     setup_fsm(Config, [error_start_ake]);
 init_per_testcase(pt_usr_3, Config) ->
     setup_fsm(Config, [require_encryption]);
-init_per_testcase(pt_ake_msg, Config) ->
+init_per_testcase(pt_ake_msg_1, Config) ->
     setup_pair(Config, [], []);
+init_per_testcase(pt_ake_msg_2, Config) ->
+    setup_pair(Config, [require_encryption], []);
 init_per_testcase(pt_net_tagged_ws_2, Config) ->
     setup_pair(Config,
 	       [whitespace_start_ake, require_encryption], []);
 init_per_testcase(pt_net_tagged_ws_1, Config) ->
     setup_pair(Config, [whitespace_start_ake], []);
-init_per_testcase(pt_net_tagged_ws_2, Config) ->
-    setup_pair(Config,
-	       [whitespace_start_ake, require_encryption], []);
 init_per_testcase(pt_net_tagged_ws_3, Config) ->
     setup_pair(Config, [require_encryption], []);
 init_per_testcase(enc_usr_start, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(enc_usr_stop, Config) ->
     setup_pair(Config, [], []);
 init_per_testcase(enc_net_plain, Config) ->
     setup_pair(Config, [], []);
@@ -72,6 +80,43 @@ init_per_testcase(enc_net_error_1, Config) ->
     setup_pair(Config, [], []);
 init_per_testcase(enc_net_error_2, Config) ->
     setup_pair(Config, [error_start_ake], []);
+init_per_testcase(enc_net_malformed, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(enc_net_malformed_encrypted,
+		  Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(enc_net_ignore_unreadable, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(enc_net_unreadable, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fin_usr_start, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fin_usr_stop, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fin_usr_msg, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fin_net_plain, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fin_net_error_1, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fin_net_error_2, Config) ->
+    setup_pair(Config, [error_start_ake], []);
+init_per_testcase(fin_net_tagged_ws_1, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fin_net_tagged_ws_2, Config) ->
+    setup_pair(Config, [whitespace_start_ake], []);
+init_per_testcase(fin_net_data, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fin_net_ake, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fin_net_malformed, Config) ->
+    setup_pair(Config, [], []);
+init_per_testcase(fragmented, Config) ->
+    setup_pair(Config, [{max_fragment_size, 256}], []);
+init_per_testcase(padded, Config) ->
+    setup_pair(Config, [{min_enc_size, 23}], []);
+init_per_testcase(heartbeat, Config) ->
+    setup_pair(Config, [{heartbeat_timeout, 200}], []);
 init_per_testcase(_TestCase, Config) ->
     setup_fsm(Config, []).
 
@@ -100,7 +145,7 @@ end_per_testcase(_TestCase, Config) ->
     end,
     Config.%}}}F
 
-%F{{{
+%F{{{ pt_.../1
 pt_usr_1(Config) ->
     ct:comment("message from user while in state [plaintext]"),
     Fsm = (?config(fsm, Config)),
@@ -145,6 +190,14 @@ pt_net_1(Config) ->
     R = {to_user, {message, "foo bar baz", []}},
     R = receive R -> R after 500 -> timeout end.
 
+pt_net_malfored(Config) ->
+    ct:comment("malformed message from netrwork in state "
+	       "[plaintext]"),
+    Parser = (?config(parser, Config)),
+    otr_parser_fsm:consume(Parser, "?OTR:Zm9vYmFy."),
+    R = {to_user, {error, malformed_message_received}},
+    R = receive R -> R after 500 -> timeout end.
+
 pt_net_error_1(Config) ->
     ct:comment("error message from network while in "
 	       "state [plaintext]"),
@@ -173,9 +226,7 @@ pt_net_data(Config) ->
     otr_parser_fsm:consume(Parser, M),
     R1 = {to_user, {error, unreadable_encrypted_received}},
     R1 = receive R1 -> R1 after 500 -> timeout end,
-    R2 = {to_net,
-	  "?OTR Error:You sent an encrypted message, "
-	  "but we finished th private conversation"},
+    R2 = {to_net, "?OTR Error:" ++ (?ERR_MSG_UNEXPECTED)},
     R2 = receive R2 -> R2 after 500 -> timeout end.
 
 pt_net_dh_key(Config) ->
@@ -212,10 +263,7 @@ pt_net_tagged_ws_1(_Config) ->
     {to_user1, {message, "FOOO"}} = receive
 				      X -> X after 500 -> timeout
 				    end,
-    {to_user2, {info, {encrypted_new_dsa_fp, _FP2, SIG}}} =
-	receive Z -> Z after 500 -> timeout end,
-    {to_user1, {info, {encrypted_new_dsa_fp, _FP1, SIG}}} =
-	receive Y -> Y after 500 -> timeout end.
+    ok = key_exchange_completed().
 
 pt_net_tagged_ws_2(_Config) ->
     ct:comment("Taged whitespace message from network "
@@ -224,10 +272,7 @@ pt_net_tagged_ws_2(_Config) ->
     otr_parser_fsm:consume(parser1, "FOOO" ++ (?TAG_V2)),
     {to_user1, {message, "FOOO", [warning_unencrypted]}} =
 	receive X -> X after 500 -> timeout end,
-    {to_user2, {info, {encrypted_new_dsa_fp, _FP2, SIG}}} =
-	receive Z -> Z after 500 -> timeout end,
-    {to_user1, {info, {encrypted_new_dsa_fp, _FP1, SIG}}} =
-	receive Y -> Y after 500 -> timeout end.
+    ok = key_exchange_completed().
 
 pt_net_tagged_ws_3(_Config) ->
     ct:comment("Taged whitespace message from network "
@@ -243,24 +288,21 @@ pt_net_query_1(Config) ->
 	       "state [plaintext]"),
     Parser = (?config(parser, Config)),
     otr_parser_fsm:consume(Parser, "?OTRv2?"),
-    {to_net, M} = receive X -> X after 500 -> timeout end.
+    {to_net, _} = receive X -> X after 500 -> timeout end.
 
 pt_net_query_2(Config) ->
     ct:comment("query message from network while in "
 	       "state [plaintext], twice"),
     Parser = (?config(parser, Config)),
     otr_parser_fsm:consume(Parser, "?OTRv2?"),
-    {to_net, M} = receive X -> X after 500 -> timeout end,
+    {to_net, _} = receive X -> X after 500 -> timeout end,
     otr_parser_fsm:consume(Parser, "?OTRv2?"),
-    {to_net, N} = receive Y -> Y after 500 -> timeout end.
+    {to_net, _} = receive Y -> Y after 500 -> timeout end.
 
-pt_ake_msg(_Config) ->
+pt_ake_msg_1(_Config) ->
     ct:comment("complete AKE and message exchange"),
     otr_fsm:consume(fsm1, {user, start_otr}),
-    {to_user1, {info, {encrypted_new_dsa_fp, FP2, SIG}}} =
-	receive X -> X after 500 -> timeout end,
-    {to_user2, {info, {encrypted_new_dsa_fp, FP1, SIG}}} =
-	receive Y -> Y after 500 -> timeout end,
+    ok = key_exchange_completed(),
     otr_fsm:consume(fsm2, {user, {message, "FOOO"}}),
     {to_user1, {message, "FOOO"}} = receive
 				      R1 -> R1 after 500 -> timeout
@@ -269,11 +311,28 @@ pt_ake_msg(_Config) ->
     {to_user2, {message, "XXXX"}} = receive
 				      R2 -> R2 after 500 -> timeout
 				    end,
-    io:format("~w~n~w~n", [FP1, FP2]),
+    ok.
+
+pt_ake_msg_2(_Config) ->
+    ct:comment("complete AKE and message exchange, when "
+	       "plain messages where received from user "
+	       "before switching to mode [encrypted] "
+	       "and require_encryption=true"),
+    otr_fsm:consume(fsm1, {user, {message, "M1"}}),
+    otr_fsm:consume(fsm1, {user, {message, "M2"}}),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    {to_user2, {message, "M1"}} = receive
+				    R1 -> R1 after 500 -> timeout
+				  end,
+    {to_user2, {message, "M2"}} = receive
+				    R2 -> R2 after 500 -> timeout
+				  end,
     ok.
 
 %}}}F
 
+%F{{{ enc_.../1
 enc_usr_start(_Config) ->
     ct:comment("start otr command while in state [encrypted]"),
     otr_fsm:consume(fsm1, {user, start_otr}),
@@ -290,14 +349,22 @@ enc_usr_start(_Config) ->
 					    end,
     ok.
 
+enc_usr_stop(_Config) ->
+    ct:comment("stop otr command while in state [encrypted]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    otr_fsm:consume(fsm1, {user, stop_otr}),
+    {to_user2, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    timer:sleep(100),
+    ok.
+
 enc_net_plain(_Config) ->
     ct:comment("plain message from network while in "
 	       "state  [encrypted]"),
     otr_fsm:consume(fsm1, {user, start_otr}),
-    {to_user1, {info, {encrypted_new_dsa_fp, _FP2, SIG1}}} =
-	receive X1 -> X1 after 500 -> timeout end,
-    {to_user2, {info, {encrypted_new_dsa_fp, _FP1, SIG1}}} =
-	receive Y1 -> Y1 after 500 -> timeout end,
+    ok = key_exchange_completed(),
     otr_parser_fsm:consume(parser1, "some plain text"),
     R = {to_user1,
 	 {message, "some plain text", [warning_unencrypted]}},
@@ -307,10 +374,7 @@ enc_net_tagged_ws_1(_Config) ->
     ct:comment("tagged whitespace message from network "
 	       "while in state [encrypted]"),
     otr_fsm:consume(fsm1, {user, start_otr}),
-    {to_user1, {info, {encrypted_new_dsa_fp, _FP2, SIG1}}} =
-	receive X1 -> X1 after 500 -> timeout end,
-    {to_user2, {info, {encrypted_new_dsa_fp, _FP1, SIG1}}} =
-	receive Y1 -> Y1 after 500 -> timeout end,
+    ok = key_exchange_completed(),
     otr_parser_fsm:consume(parser1, "T WS" ++ (?TAG_V2)),
     R = {to_user1,
 	 {message, "T WS", [warning_unencrypted]}},
@@ -321,10 +385,7 @@ enc_net_tagged_ws_2(_Config) ->
 	       "while in state [encrypted] when whitespace_st"
 	       "art_ake=true"),
     otr_fsm:consume(fsm1, {user, start_otr}),
-    {to_user1, {info, {encrypted_new_dsa_fp, _FP2, SIG1}}} =
-	receive X1 -> X1 after 500 -> timeout end,
-    {to_user2, {info, {encrypted_new_dsa_fp, _FP1, SIG1}}} =
-	receive Y1 -> Y1 after 500 -> timeout end,
+    ok = key_exchange_completed(),
     otr_parser_fsm:consume(parser1, "T WS" ++ (?TAG_V2)),
     R = {to_user1,
 	 {message, "T WS", [warning_unencrypted]}},
@@ -341,10 +402,7 @@ enc_net_error_1(_Config) ->
     ct:comment("error message from network while in "
 	       "state [encrypted]"),
     otr_fsm:consume(fsm1, {user, start_otr}),
-    {to_user1, {info, {encrypted_new_dsa_fp, _FP2, SIG1}}} =
-	receive X1 -> X1 after 500 -> timeout end,
-    {to_user2, {info, {encrypted_new_dsa_fp, _FP1, SIG1}}} =
-	receive Y1 -> Y1 after 500 -> timeout end,
+    ok = key_exchange_completed(),
     otr_parser_fsm:consume(parser1, "?OTR Error:The Error"),
     R = {to_user1, {error_net, "The Error"}},
     R = receive X3 -> X3 after 500 -> timeout end.
@@ -353,10 +411,7 @@ enc_net_error_2(_Config) ->
     ct:comment("error message from network while in "
 	       "state [encrypted] when error_start_ake=true"),
     otr_fsm:consume(fsm1, {user, start_otr}),
-    {to_user1, {info, {encrypted_new_dsa_fp, _FP2, SIG1}}} =
-	receive X1 -> X1 after 500 -> timeout end,
-    {to_user2, {info, {encrypted_new_dsa_fp, _FP1, SIG1}}} =
-	receive Y1 -> Y1 after 500 -> timeout end,
+    ok = key_exchange_completed(),
     otr_parser_fsm:consume(parser1, "?OTR Error:The Error"),
     R = {to_user1, {error_net, "The Error"}},
     R = receive X3 -> X3 after 500 -> timeout end,
@@ -367,6 +422,276 @@ enc_net_error_2(_Config) ->
 					      Y2 -> Y2 after 500 -> timeout
 					    end,
     ok.
+
+enc_net_malformed(_Config) ->
+    ct:comment("malformed message from network in state "
+	       "[encrypted]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    otr_parser_fsm:consume(parser1, "?OTR:Zm9vYmFy."),
+    R = {to_user1, {error, malformed_message_received}},
+    R = receive R -> R after 500 -> timeout end.
+
+enc_net_ignore_unreadable(_Config) ->
+    ct:comment("unreadable message from network in state "
+	       "[encrypted] when flag=ignore_unreadable"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(10),
+    net_pipe ! {tap, self()},
+    otr_fsm:consume(fsm1, {user, {message, "message foo"}}),
+    Fsm1 = whereis(fsm1),
+    {tap, {Fsm1, M}} = receive
+			 X1 -> X1 after 500 -> timeout
+		       end,
+    {to_user2, {message, "message foo"}} = receive
+					     X2 -> X2 after 500 -> timeout
+					   end,
+    exchange_data(3),
+    {ok, M1} = otr_message:parse(M),
+    otr_fsm:consume(fsm2,
+		    {net, M1#otr_msg_data{flags = 1}}),
+    exchange_data(3),
+    ok.
+
+enc_net_unreadable(_Config) ->
+    ct:comment("unreadable message from network in state "
+	       "[encrypted]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(10),
+    net_pipe ! {tap, self()},
+    otr_fsm:consume(fsm1, {user, {message, "message foo"}}),
+    Fsm1 = whereis(fsm1),
+    {tap, {Fsm1, M}} = receive
+			 X1 -> X1 after 500 -> timeout
+		       end,
+    {to_user2, {message, "message foo"}} = receive
+					     X2 -> X2 after 500 -> timeout
+					   end,
+    exchange_data(3),
+    {ok, M1} = otr_message:parse(M),
+    otr_fsm:consume(fsm2, {net, M1}),
+    {to_user2, {error, malforment_encrypted_received}} =
+	receive X3 -> X3 after 500 -> timeout end,
+    {to_user1, {error_net, ?ERR_MSG_MALFORMED}} = receive
+						    X4 -> X4
+						    after 500 -> timeout
+						  end,
+    exchange_data(3),
+    ok.
+
+%}}}F
+
+%F{{{ fin_.../1
+fin_usr_start(_Config) ->
+    ct:comment("start otr command while in state [finished]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_2_completed(),
+    exchange_data(5),
+    ok.
+
+fin_usr_stop(_Config) ->
+    ct:comment("stop otr command while in state [finished]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_fsm:consume(fsm1, {user, stop_otr}),
+    timer:sleep(100).
+
+fin_usr_msg(_Config) ->
+    ct:comment("message from user while in state [fin_usr_msg]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_fsm:consume(fsm1, {user, {message, "FOO"}}),
+    {to_user1, {info, message_can_not_be_sent_this_time}} =
+	receive X4 -> X4 after 500 -> timeout end.
+
+fin_net_plain(_Config) ->
+    ct:comment("plain message from user while in state "
+	       "[fin_usr_msg]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_fsm:consume(fsm2, {user, {message, "FOO"}}),
+    {to_user1, {message, "FOO", [warning_unencrypted]}} =
+	receive X4 -> X4 after 500 -> timeout end.
+
+fin_net_error_1(_Config) ->
+    ct:comment("error message from network while in "
+	       "state [finished]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_parser_fsm:consume(parser1, "?OTR Error:The Error"),
+    R = {to_user1, {error_net, "The Error"}},
+    R = receive X4 -> X4 after 500 -> timeout end.
+
+fin_net_error_2(_Config) ->
+    ct:comment("error message from network while in "
+	       "state [finished] when error_start_ake=true"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_parser_fsm:consume(parser1, "?OTR Error:The Error"),
+    R = {to_user1, {error_net, "The Error"}},
+    R = receive X4 -> X4 after 500 -> timeout end,
+    ok = key_exchange_2_completed(),
+    exchange_data(3).
+
+fin_net_tagged_ws_1(_Config) ->
+    ct:comment("tagged whitespace message from network "
+	       "while in state [encrypted]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_parser_fsm:consume(parser1, "T WS" ++ (?TAG_V2)),
+    R = {to_user1,
+	 {message, "T WS", [warning_unencrypted]}},
+    R = receive X4 -> X4 after 500 -> timeout end.
+
+fin_net_tagged_ws_2(_Config) ->
+    ct:comment("tagged whitespace message from network "
+	       "while in state [encrypted] when whitespace_st"
+	       "art_ake=true"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_parser_fsm:consume(parser1, "T WS" ++ (?TAG_V2)),
+    R = {to_user1,
+	 {message, "T WS", [warning_unencrypted]}},
+    R = receive X4 -> X4 after 500 -> timeout end,
+    ok = key_exchange_2_completed().
+
+fin_net_data(_Config) ->
+    ct:comment("data message from network while in state "
+	       "[encrypted]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    {M, _} = (?MessageTestVector5),
+    otr_parser_fsm:consume(parser1, M),
+    {to_user1, {error, unreadable_encrypted_received}} =
+	receive X4 -> X4 after 500 -> timeout end,
+    {to_user2, {error_net, ?ERR_MSG_UNEXPECTED}} = receive
+						     X5 -> X5
+						     after 500 -> timeout
+						   end.
+
+fin_net_ake(_Config) ->
+    ct:comment("ake from network while in state [encrypted]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_fsm:consume(fsm2, {user, start_otr}),
+    key_exchange_2_completed().
+
+fin_net_malformed(_Config) ->
+    ct:comment("malformed message from network in state "
+	       "[finished]"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    exchange_data(5),
+    otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user1, {info, finished}} = receive
+				     X3 -> X3 after 500 -> timeout
+				   end,
+    otr_parser_fsm:consume(parser1, "?OTR:Zm9vYmFy."),
+    R = {to_user1, {error, malformed_message_received}},
+    R = receive R -> R after 500 -> timeout end.
+
+%}}}F
+
+fragmented(_Config) ->
+    ct:comment("ake, transmit/receive fragmented message"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    M = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+	"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+	"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+	"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+	"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+	"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+	"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    otr_fsm:consume(fsm1, {user, {message, M}}),
+    {to_user2, {message, M}} = receive
+				 X1 -> X1 after 500 -> timeout
+			       end.
+
+padded(_Config) ->
+    ct:comment("ake, transmit/receive padded message"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    M = "XXX",
+    otr_fsm:consume(fsm1, {user, {message, M}}),
+    {to_user2, {message, M}} = receive
+				 X1 -> X1 after 500 -> timeout
+			       end.
+
+heartbeat(_Config) ->
+    ct:comment("ake, transmit/receive heartbeat message"),
+    otr_fsm:consume(fsm1, {user, start_otr}),
+    ok = key_exchange_completed(),
+    M = "XXX",
+    otr_fsm:consume(fsm2, {user, {message, M}}),
+    {to_user1, {message, M}} = receive
+				 X1 -> X1 after 500 -> timeout
+			       end,
+    timer:sleep(100),
+    otr_fsm:consume(fsm2, {user, {message, M}}),
+    {to_user1, {message, M}} = receive
+				 X2 -> X2 after 500 -> timeout
+			       end,
+    timer:sleep(150),
+    otr_fsm:consume(fsm2, {user, {message, M}}),
+    {to_user1, {message, M}} = receive
+				 X3 -> X3 after 500 -> timeout
+			       end,
+    timer:sleep(100).
 
 cover(_Config) ->
     ct:comment("achive 100% coverage: call code_change/4, "
@@ -383,6 +708,59 @@ cover(_Config) ->
     ok.
 
 %F{{{ internal functions
+
+exchange_data(0) -> ok;
+exchange_data(N) ->
+    do_exchange_data(N), exchange_data(N - 1).
+
+do_exchange_data(N) when N div 2 == 0 ->
+    M = "MSG" ++ integer_to_list(N),
+    otr_fsm:consume(fsm2, {user, {message, M}}),
+    {to_user1, {message, M}} = receive
+				 X -> X after 500 -> timeout
+			       end;
+do_exchange_data(N) ->
+    M = "MSG" ++ integer_to_list(N),
+    otr_fsm:consume(fsm1, {user, {message, M}}),
+    {to_user2, {message, M}} = receive
+				 X -> X after 500 -> timeout
+			       end.
+
+key_exchange_completed() ->
+    receive
+      {to_user1,
+       {info, {encrypted_new_dsa_fp, _FP2, SIG1}}} ->
+	  receive
+	    {to_user2,
+	     {info, {encrypted_new_dsa_fp, _FP1, SIG1}}} ->
+		ok
+	    after 500 -> timeout
+	  end;
+      {to_user2,
+       {info, {encrypted_new_dsa_fp, _FP1, SIG1}}} ->
+	  receive
+	    {to_user1,
+	     {info, {encrypted_new_dsa_fp, _FP2, SIG1}}} ->
+		ok
+	    after 500 -> timeout
+	  end
+      after 500 -> timeout
+    end.
+
+key_exchange_2_completed() ->
+    receive
+      {to_user1, {info, {encrypted, SIG}}} ->
+	  receive
+	    {to_user2, {info, {encrypted, SIG}}} -> ok
+	    after 500 -> timeout
+	  end;
+      {to_user2, {info, {encrypted, SIG}}} ->
+	  receive
+	    {to_user1, {info, {encrypted, SIG}}} -> ok
+	    after 500 -> timeout
+	  end
+      after 500 -> timeout
+    end.
 
 setup_pair(Config, Opts1, Opts2) ->
     Self = self(),
@@ -401,23 +779,35 @@ setup_pair(Config, Opts1, Opts2) ->
 				fun (X) -> otr_fsm:consume(Fsm1, {net, X}) end),
     otr_parser_fsm:set_emit_fun(Parser2,
 				fun (X) -> otr_fsm:consume(Fsm2, {net, X}) end),
-    NetPipe = spawn_link(fun () ->
-				 net_pipe(Fsm1, Parser1, Fsm2, Parser2)
-			 end),
-    register(net_pipe, NetPipe),
     register(fsm1, Fsm1),
     register(fsm2, Fsm2),
     register(parser1, Parser1),
     register(parser2, Parser2),
+    NetPipe = spawn_link(fun () ->
+				 net_pipe(Fsm1, Parser1, Fsm2, Parser2)
+			 end),
+    register(net_pipe, NetPipe),
     Config.
 
-net_pipe(Fsm1, Parser1, Fsm2, Parser2) ->
+net_pipe(F1, P1, F2, P2, Tap) ->
     receive
-      {Fsm1, M} -> otr_parser_fsm:consume(Parser2, M);
-      {Fsm2, M} -> otr_parser_fsm:consume(Parser1, M);
+      {F1, M} ->
+	  Tap ! {tap, {F1, M}}, otr_parser_fsm:consume(P2, M);
+      {F2, M} ->
+	  Tap ! {tap, {F2, M}}, otr_parser_fsm:consume(P1, M);
       _ -> exit(kill)
     end,
-    net_pipe(Fsm1, Parser1, Fsm2, Parser2).
+    net_pipe(F1, P1, F2, P2).
+
+net_pipe(F1, P1, F2, P2) ->
+    receive
+      {tap, Tap} -> net_pipe(F1, P1, F2, P2, Tap);
+      {F1, M} ->
+	  otr_parser_fsm:consume(P2, M), net_pipe(F1, P1, F2, P2);
+      {F2, M} ->
+	  otr_parser_fsm:consume(P1, M), net_pipe(F1, P1, F2, P2);
+      _ -> exit(kill)
+    end.
 
 setup_fsm(Config, Opts) ->
     Self = self(),

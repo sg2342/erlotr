@@ -1,0 +1,22 @@
+----------------------------------------------------------------------------
+
+run testcase foo from suite bar:
+
+ Suites=foo,
+ Cases=bar,
+ ct:run_test([{suite, Suites}, {dir,  "lib/erlotr"}, {testcase, Cases}, {logdir, "log"}, {cover, "cover.spec"}, {include, element(2, file:get_cwd())  ++ "/lib/erlotr/src"}]).
+
+----------------------------------------------------------------------------
+
+get [P, Q, G, X, Y] from an SSH private key file:
+
+ os:cmd("ssh-keygen -t dsa -N \"\" -f /tmp/id_dsa"),
+ {ok, {ssh_key, dsa, {P,Q,G,Y}, {P,Q,G,X},_}} = 
+    ssh_file:private_identity_key("ssh-dss", [{user_dir, "/tmp"}]), 
+   {ok, [P,Q,G,X,Y]}.
+
+----------------------------------------------------------------------------
+
+vim : set foldmark=F{{{,}}}F
+
+

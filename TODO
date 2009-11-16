@@ -1,0 +1,15 @@
+- research if invalid signature and reveal_signature messages _must_ switch the aut_state to NONE or _must_ be ignored 
+
+- mark if the SIG from AKE ist the result of a revela_signature or a signature message
+
+- smp implementation
+
+- spec for all exported functions
+
+- 100% code covering testcases for otr_fsm
+
+- 100% code covering testcases for otr_app otr_sup otr_crtx_sup
+
+- documentation
+
+- API in otr.erl

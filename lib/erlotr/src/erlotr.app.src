@@ -12,6 +12,7 @@
                otr_message,
                otr_parser_fsm,
                otr_ake_fsm,
+	       otr_mcgs,
                otr_fsm,
 			   otr_tlv]},
     {registered, [otr_sup]},

@@ -12,8 +12,6 @@
 
 -include("otr_internal.hrl").
 
--include("otr.hrl").
-
 % gen_fsm callbacks
 -export([code_change/4, handle_event/3, handle_info/3,
 	 handle_sync_event/4, init/1, terminate/3]).
@@ -29,7 +27,8 @@
 	 whitespace_start_ake, error_start_ake,
 	 max_fragment_size, send_whitespace_tag,
 	 got_plaintext = false, pt = [], ake, ssid, dsa, mcgs,
-	 their_dsa_fp}).
+	 heartbeat_timeout, last_data_msg, their_dsa_fp,
+	 min_enc_size}).
 
 start_link(Opts) ->
     gen_fsm:start_link(?MODULE, Opts, []).
@@ -40,8 +39,10 @@ consume(Pid, M) -> gen_fsm:send_event(Pid, M).
 plaintext({ake, {encrypted, TheirKM}},
 	  #s{pt = PT} = State) ->
     NState = ake_completed(State, TheirKM),
-    lists:foreach(fun (M) -> send_data_msg(NState, M) end,
-		  PT),
+    lists:foreach(fun (M) ->
+			  send_data_msg(NState, {M, [], 0})
+		  end,
+		  lists:reverse(PT)),
     {next_state, encrypted, NState#s{pt = []}};
 %F{{{ plaintext({user ....
 plaintext({user, start_otr}, State) ->
@@ -72,7 +73,10 @@ plaintext({net, #otr_msg_data{}}, State) ->
     emit_user(State,
 	      {error, unreadable_encrypted_received}),
     emit_net(State,
-	     #otr_msg_error{s = ?OTRL_ERRCODE_MSG_NOT_IN_PRIVATE}),
+	     #otr_msg_error{s = ?ERR_MSG_UNEXPECTED}),
+    {next_state, plaintext, State};
+plaintext({net, {error, {encoded_m, _}}}, State) ->
+    emit_user(State, {error, malformed_message_received}),
     {next_state, plaintext, State};
 plaintext({net, M}, State) ->
     handle_ake_message(M, plaintext, State).  %}}}F
@@ -84,13 +88,16 @@ encrypted({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
     {next_state, encrypted, State};
 encrypted({user, stop_otr}, State) ->
-    %TODO: Send a Data Message, encoding a message with an empty hunamn-readable part and TLV type 1
-    {next_state, plaintext, State};
+    {next_state, plaintext,
+     send_data_msg(State, {[], [disconnected], 1})};
 encrypted({user, {message, M}}, State) ->
-    ok = send_data_msg(State, M),
-    %TODO: Encrypt the message and send it as data message, store the plaintext for possible retransmission
-    {next_state, encrypted, State};  %}}}F
+    NState = send_data_msg(State, {M, [], 0}),
+    %TODO: store the plaintext for possible retransmission
+    {next_state, encrypted, NState};  %}}}F
 %F{{{ encrypted({net
+encrypted({net, {error, {encoded_m, _}}}, State) ->
+    emit_user(State, {error, malformed_message_received}),
+    {next_state, encrypted, State};
 encrypted({net, {plain, M}}, State) ->
     emit_user(State, {message, M, [warning_unencrypted]}),
     {next_state, encrypted, State};
@@ -99,7 +106,8 @@ encrypted({net, #otr_msg_tagged_ws{s = M}}, State) ->
 encrypted({net, #otr_msg_error{s = M}}, State) ->
     handle_error_message(encrypted, State, M);
 encrypted({net, #otr_msg_data{} = M}, State) ->
-    recv_data_msg(State, M), {next_state, encrypted, State};
+    NState = heartbeat(State),
+    handle_data_message(NState, M);
 encrypted({net, M}, State) ->
     handle_ake_message(M, encrypted, State).%}}}F
 
@@ -117,6 +125,9 @@ finished({user, {message, M}}, State) ->
     {next_state, finished,
      State#s{pt = [M | State#s.pt]}};  %}}}F
 %F{{{ finished({net
+finished({net, {error, {encoded_m, _}}}, State) ->
+    emit_user(State, {error, malformed_message_received}),
+    {next_state, finished, State};
 finished({net, {plain, M}}, State) ->
     emit_user(State, {message, M, [warning_unencrypted]}),
     {next_state, finished, State};
@@ -128,7 +139,7 @@ finished({net, #otr_msg_data{}}, State) ->
     emit_user(State,
 	      {error, unreadable_encrypted_received}),
     emit_net(State,
-	     #otr_msg_error{s = ?OTRL_ERRCODE_MSG_NOT_IN_PRIVATE}),
+	     #otr_msg_error{s = ?ERR_MSG_UNEXPECTED}),
     {next_state, finished, State};
 finished({net, M}, State) ->
     handle_ake_message(M, finished, State).%}}}F
@@ -152,7 +163,11 @@ init(Opts) ->
 	       dsa = proplists:get_value(dsa, Opts),
 	       max_fragment_size =
 		   proplists:get_value(max_fragment_size, Opts,
-				       ?DEFAULT_MAX_FRAG_SIZE)},
+				       ?DEFAULT_MAX_FRAG_SIZE),
+	       min_enc_size =
+		   proplists:get_value(min_enc_size, Opts, 0),
+	       heartbeat_timeout =
+		   proplists:get_value(heartbeat_timeout, Opts, infinity)},
     {ok, Mcgs} = otr_mcgs:start_link(),
     {ok, plaintext, State#s{mcgs = Mcgs}}.
 
@@ -177,18 +192,67 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 
 %F{{{ internal functions
 
-send_data_msg(State, M) ->
-    {ok, EncM} = otr_mcgs:encrypt(State#s.mcgs, M),
-    emit_net(State, EncM),
-    ok.
-
-recv_data_msg(State, M) ->
+handle_data_message(State, M) ->
     case otr_mcgs:decrypt(State#s.mcgs, M) of
+      {ok, {[], TLV}} -> handle_tlv(State, TLV);
       {ok, {DecM, TLV}} ->
-	  emit_user(State, {message, DecM}); %TODO : tlv
-      {rejected, _} ->
-	  emit_net(State, #otr_msg_error{s = "Foo"})
+	  emit_user(State, {message, DecM}),
+	  handle_tlv(State, TLV);
+      {rejected, _, ignore_unreadable} ->
+	  {next_state, encrypted, State};
+      {rejected, _, _} ->
+	  emit_user(State,
+		    {error, malforment_encrypted_received}),
+	  emit_net(State, #otr_msg_error{s = ?ERR_MSG_MALFORMED}),
+	  {next_state, encrypted, State}
     end.
+
+heartbeat(#s{heartbeat_timeout = infinity} = State) ->
+    State;
+heartbeat(#s{last_data_msg = undefined} = State) ->
+    State#s{last_data_msg = now()};
+heartbeat(State) ->
+    Now = now(),
+    case timer:now_diff(Now, State#s.last_data_msg) div 1000
+	   > State#s.heartbeat_timeout
+	of
+      true -> send_data_msg(State, {[], [], 1});
+      false -> State
+    end.
+
+enter_finished(State) ->
+    emit_user(State, {info, finished}),
+    unlink(State#s.mcgs),
+    exit(State#s.mcgs, shutdown),
+    {ok, Mcgs} = otr_mcgs:start_link(),
+    {next_state, finished, State#s{mcgs = Mcgs}}.
+
+handle_tlv(State, TLV) ->
+    case lists:member(disconnected, TLV) of
+      true -> enter_finished(State);
+      false ->
+	  NTLV = [V1 || V1 <- TLV, handle_tlv_1(V1)],
+	  {next_state, encrypted, handle_smp(State, NTLV)}
+    end.
+
+handle_tlv_1({padding, _}) -> false;
+handle_tlv_1(_) -> true.
+
+handle_smp(State, []) -> State. %TODO
+
+send_data_msg(#s{min_enc_size = Mes} = State,
+	      {M, TLV, Flags})
+    when Mes /= 0, length(M) < Mes ->
+    NTLV = [{padding, Mes - length(M)} | TLV],
+    {ok, EncM} = otr_mcgs:encrypt(State#s.mcgs,
+				  {M, NTLV, Flags}),
+    emit_net(State, EncM),
+    State#s{last_data_msg = now()};
+send_data_msg(State, {M, TLV, Flags}) ->
+    {ok, EncM} = otr_mcgs:encrypt(State#s.mcgs,
+				  {M, TLV, Flags}),
+    emit_net(State, EncM),
+    State#s{last_data_msg = now()}.
 
 %F{{{ handle_ake_message/3
 handle_ake_message(otr_msg_query, StateName, State) ->
