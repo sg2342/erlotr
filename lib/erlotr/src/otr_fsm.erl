@@ -26,12 +26,10 @@
 
 -record(s,
 	{emit_user, emit_net, require_encryption,
-	 whitespace_start_ake, error_start_ake, 
-	 max_fragment_size, send_whitespace_tag, 
-	 got_plaintext = false, pt = [], ake, ssid, dsa,
-	 mcgs,
-	 their_dsa_fp
-	}). 
+	 whitespace_start_ake, error_start_ake,
+	 max_fragment_size, send_whitespace_tag,
+	 got_plaintext = false, pt = [], ake, ssid, dsa, mcgs,
+	 their_dsa_fp}).
 
 start_link(Opts) ->
     gen_fsm:start_link(?MODULE, Opts, []).
@@ -42,7 +40,8 @@ consume(Pid, M) -> gen_fsm:send_event(Pid, M).
 plaintext({ake, {encrypted, TheirKM}},
 	  #s{pt = PT} = State) ->
     NState = ake_completed(State, TheirKM),
-    lists:foreach(fun(M) -> send_data_msg(NState, M) end, PT),
+    lists:foreach(fun (M) -> send_data_msg(NState, M) end,
+		  PT),
     {next_state, encrypted, NState#s{pt = []}};
 %F{{{ plaintext({user ....
 plaintext({user, start_otr}, State) ->
@@ -65,19 +64,10 @@ plaintext({user, {message, M}}, State) ->
 plaintext({net, {plain, M}}, State) ->
     emit_user(State, {message, M, []}),
     {next_state, plaintext, State};
-plaintext({net, #otr_msg_tagged_ws{s = M}}, State) ->
-    emit_user(State, {message, M}),
-    {ok, Ake} = init_ake(State),
-    otr_ake_fsm:consume(Ake, {cmd, start}),
-    {next_state, plaintext, State#s{ake = Ake}};
-plaintext({net, #otr_msg_error{s = M}},
-	  #s{error_start_ake = true} = State) ->
-    emit_net(State, otr_msg_query),
-    emit_user(State, {error_net, M}),
-    {next_state, plaintext, State};
 plaintext({net, #otr_msg_error{s = M}}, State) ->
-    emit_user(State, {error_net, M}),
-    {next_state, plaintext, State};
+    handle_error_message(plaintext, State, M);
+plaintext({net, #otr_msg_tagged_ws{s = M}}, State) ->
+    handle_tagged_ws_message(plaintext, State, M);
 plaintext({net, #otr_msg_data{}}, State) ->
     emit_user(State,
 	      {error, unreadable_encrypted_received}),
@@ -104,23 +94,12 @@ encrypted({user, {message, M}}, State) ->
 encrypted({net, {plain, M}}, State) ->
     emit_user(State, {message, M, [warning_unencrypted]}),
     {next_state, encrypted, State};
-encrypted({net, #otr_msg_tagged_ws{s = M}},
-	  #s{whitespace_start_ake = true} = State) ->
-    emit_user(State, {message, M, [warning_unencrypted]}),
-    {ok, Ake} = init_ake(State),
-    otr_ake_fsm:consume(Ake, {cmd, start}),
-    {next_state, encrypted, State#s{ake = Ake}};
 encrypted({net, #otr_msg_tagged_ws{s = M}}, State) ->
-    emit_user(State, {message, M, [warning_unencrypted]}),
-    {next_state, encrypted, State};
+    handle_tagged_ws_message(encrypted, State, M);
 encrypted({net, #otr_msg_error{s = M}}, State) ->
-    emit_user(State, {error_net, M}),
-    State#s.error_start_ake andalso
-      emit_net(State, otr_msg_query),
-    {next_state, encrypted, State};
+    handle_error_message(encrypted, State, M);
 encrypted({net, #otr_msg_data{} = M}, State) ->
-    recv_data_msg(State, M),
-    {next_state, encrypted, State};
+    recv_data_msg(State, M), {next_state, encrypted, State};
 encrypted({net, M}, State) ->
     handle_ake_message(M, encrypted, State).%}}}F
 
@@ -141,20 +120,10 @@ finished({user, {message, M}}, State) ->
 finished({net, {plain, M}}, State) ->
     emit_user(State, {message, M, [warning_unencrypted]}),
     {next_state, finished, State};
-finished({net, #otr_msg_tagged_ws{s = M}},
-	 #s{whitespace_start_ake = true} = State) ->
-    emit_user(State, {message, M, [warning_unencrypted]}),
-    {ok, Ake} = init_ake(State),
-    otr_ake_fsm:consume(Ake, {cmd, start}),
-    {next_state, finished, State#s{ake = Ake}};
 finished({net, #otr_msg_tagged_ws{s = M}}, State) ->
-    emit_user(State, {message, M, [warning_unencrypted]}),
-    {next_state, finished, State};
+    handle_tagged_ws_message(finished, State, M);
 finished({net, #otr_msg_error{s = M}}, State) ->
-    emit_user(State, {error_net, M}),
-    State#s.error_start_ake andalso
-      emit_net(State, otr_msg_query),
-    {next_state, finished, State};
+    handle_error_message(finished, State, M);
 finished({net, #otr_msg_data{}}, State) ->
     emit_user(State,
 	      {error, unreadable_encrypted_received}),
@@ -169,21 +138,21 @@ finished({net, M}, State) ->
 %F{{{ gen_fsm callbacks
 
 init(Opts) ->
-    State = #s{emit_user = proplists:get_value(emit_user, Opts),
-       emit_net = proplists:get_value(emit_net, Opts),
-       require_encryption =
-	   proplists:get_bool(require_encryption, Opts),
-       whitespace_start_ake =
-	   proplists:get_bool(whitespace_start_ake, Opts),
-       error_start_ake =
-	   proplists:get_bool(error_start_ake, Opts),
-       send_whitespace_tag =
-	   proplists:get_bool(send_whitespace_tag, Opts),
-       dsa = 
-	   proplists:get_value(dsa, Opts),
-       max_fragment_size =
-	   proplists:get_value(max_fragment_size, Opts,
-			       ?DEFAULT_MAX_FRAG_SIZE)},
+    State = #s{emit_user =
+		   proplists:get_value(emit_user, Opts),
+	       emit_net = proplists:get_value(emit_net, Opts),
+	       require_encryption =
+		   proplists:get_bool(require_encryption, Opts),
+	       whitespace_start_ake =
+		   proplists:get_bool(whitespace_start_ake, Opts),
+	       error_start_ake =
+		   proplists:get_bool(error_start_ake, Opts),
+	       send_whitespace_tag =
+		   proplists:get_bool(send_whitespace_tag, Opts),
+	       dsa = proplists:get_value(dsa, Opts),
+	       max_fragment_size =
+		   proplists:get_value(max_fragment_size, Opts,
+				       ?DEFAULT_MAX_FRAG_SIZE)},
     {ok, Mcgs} = otr_mcgs:start_link(),
     {ok, plaintext, State#s{mcgs = Mcgs}}.
 
@@ -215,8 +184,10 @@ send_data_msg(State, M) ->
 
 recv_data_msg(State, M) ->
     case otr_mcgs:decrypt(State#s.mcgs, M) of
-	{ok, {DecM, TLV}} -> emit_user(State, {message, DecM}); %TODO : tlv
-	{rejected, _ } -> emit_net(State, #otr_msg_error{s = "Foo"})
+      {ok, {DecM, TLV}} ->
+	  emit_user(State, {message, DecM}); %TODO : tlv
+      {rejected, _} ->
+	  emit_net(State, #otr_msg_error{s = "Foo"})
     end.
 
 %F{{{ handle_ake_message/3
@@ -251,8 +222,35 @@ handle_ake_message(#otr_msg_signature{} = M, StateName,
     otr_ake_fsm:consume(Ake, M),
     {next_state, StateName, State#s{ake = Ake}}.%}}}F
 
+handle_tagged_ws_message(StateName,
+			 #s{whitespace_start_ake = true} = State, M) ->
+    case StateName of
+      plaintext -> emit_user(State, {message, M});
+      _ ->
+	  emit_user(State, {message, M, [warning_unencrypted]})
+    end,
+    {ok, Ake} = init_ake(State),
+    otr_ake_fsm:consume(Ake, {cmd, start}),
+    {next_state, StateName, State#s{ake = Ake}};
+handle_tagged_ws_message(StateName, State, M) ->
+    case StateName of
+      plaintext -> emit_user(State, {message, M});
+      _ ->
+	  emit_user(State, {message, M, [warning_unencrypted]})
+    end,
+    {next_state, StateName, State}.
+
+handle_error_message(StateName,
+		     #s{error_start_ake = true} = State, M) ->
+    emit_user(State, {error_net, M}),
+    emit_net(State, otr_msg_query),
+    {next_state, StateName, State};
+handle_error_message(StateName, State, M) ->
+    emit_user(State, {error_net, M}),
+    {next_state, StateName, State}.
+
 ake_completed(#s{mcgs = Mcgs, ake = Ake} = State,
-	    {OurKeyId, OurKey, TheirKeyId, Y, FP, SSID}) ->
+	      {OurKeyId, OurKey, TheirKeyId, Y, FP, SSID}) ->
     unlink(Ake),
     exit(Ake, shutdown),
     case State#s.their_dsa_fp of
@@ -264,9 +262,10 @@ ake_completed(#s{mcgs = Mcgs, ake = Ake} = State,
 	  emit_user(State,
 		    {info, {encrypted_changed_dsa_fp, FP, SSID}})
     end,
-    ok = otr_mcgs:set_keys(Mcgs, {OurKeyId, OurKey, TheirKeyId, Y}),
-    State#s{ake = undefined, ssid = SSID, their_dsa_fp = FP}.
-
+    ok = otr_mcgs:set_keys(Mcgs,
+			   {OurKeyId, OurKey, TheirKeyId, Y}),
+    State#s{ake = undefined, ssid = SSID,
+	    their_dsa_fp = FP}.
 
 init_ake(#s{ake = undefined, mcgs = Mcgs, dsa = DSA}) ->
     {ok, {KeyId, DhKey}} = otr_mcgs:get_key(Mcgs),
@@ -291,7 +290,6 @@ emit_net(#s{emit_net = F, max_fragment_size = FSz},
       {ok, Data} -> F(Data);
       {fragmented, FL} -> lists:foreach(F, FL)
     end.
-
 
 %}}}F
 
