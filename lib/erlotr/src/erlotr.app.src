@@ -14,7 +14,8 @@
                otr_ake_fsm,
 	       otr_mcgs,
                otr_fsm,
-			   otr_tlv]},
+	       otr_smp_fsm,
+               otr_tlv]},
     {registered, [otr_sup]},
     {applications, [kernel, stdlib, crypto]},
     {mod, {otr_app, []}}

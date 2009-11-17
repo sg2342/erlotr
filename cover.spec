@@ -10,5 +10,6 @@
              otr,
              otr_sup,
              otr_ctx_sup,
-			 otr_tlv,
-			 otr_mcgs]}.
+             otr_tlv,
+             otr_mcgs,
+             otr_smp_fsm]}.
