@@ -14,6 +14,7 @@
 
 -behaviour(gen_fsm).
 
+-compile(export_all).
 % gen_fsm callbacks
 -export([code_change/4, handle_event/3, handle_info/3,
 	 handle_sync_event/4, init/1, terminate/3]).
@@ -28,7 +29,7 @@
 
 -record(s,
 	{initiator_fp, responder_fp, session_id, x, a2, a3, g2,
-	 g3, b2, b3, pb, qb, g3a}).
+	 g3, b2, b3, pb, qb, g3a, g3b, pab, qab, ra}).
 
 start_link(InitiatorFP, ResponderFP, SessionID) ->
     gen_fsm:start_link(?MODULE,
@@ -50,9 +51,6 @@ smp_msg(Pid, M) ->
 %F{{{ states
 
 %F{{{ expect1/3
-expect1({user_secret, _}, _From, State) ->
-    {reply, {error, unexpected_user_secret}, expected1,
-     State};
 expect1({smp_msg,
 	 {smp_msg_1, [G2A, C2, D2, G3A, C3, D3]}},
 	_From, State) ->
@@ -63,17 +61,22 @@ expect1({smp_msg,
 	  do_abort({error, proof_checking_failed}, State);
       true ->
 	  [B2, B3] = generators(2),
-	  G2 = crypto:mod_exp(G2A, B2, ?DH_MODULUS),
-	  G3 = crypto:mod_exp(G3A, B3, ?DH_MODULUS),
+	  G2 = mod_exp(G2A, B2),
+	  G3 = mod_exp(G3A, B3),
 	  {reply, {ok, need_user_secret}, wait_user_secret,
 	   State#s{g3a = G3A, g2 = G2, g3 = G3, b2 = B2, b3 = B3}}
     end;
+expect1({user_secret, _}, _From, State) ->
+    {reply, {error, unexpected_user_secret}, expect1,
+     State};
 expect1({smp_msg, smp_abort}, _From, State) ->
     do_abort({error, net_aborted}, State);
 expect1({smp_msg, _}, _From, State) ->
     do_abort({error, unexpected_smp_msg}, State).
 
 %}}}F
+
+%F{{{ wait_user_secret/3
 
 wait_user_secret({smp_msg, smp_abort}, _From, State) ->
     do_abort({error, net_aborted}, State);
@@ -82,16 +85,15 @@ wait_user_secret({smp_msg, _}, _From, State) ->
 wait_user_secret({user_secret, UserInput}, _From,
 		 #s{b2 = B2, b3 = B3, g2 = G2, g3 = G3} = State) ->
     Y = compute_x(State, UserInput),
-    G2B = crypto:mod_exp(2, B2, ?DH_MODULUS),
-    G3B = crypto:mod_exp(2, B3, ?DH_MODULUS),
+
+    G2B = mod_exp(2, B2),
+    G3B = mod_exp(2, B3),
     {C2, D2} = proof_knowledge(2, B2, 3),
     {C3, D3} = proof_knowledge(2, B3, 4),
-    [R4] = generators(1),
-    Pb = crypto:mod_exp(G3, R4, ?DH_MODULUS),
-    Qb = mod(crypto:mod_exp(2, R4, ?DH_MODULUS) *
-	       crypto:mod_exp(G2, Y, ?DH_MODULUS),
-	     ?DH_MODULUS),
-    {Cp, D5, D6} = proof_eq_coords(2, G2, G3, Y, R4, 5),
+    [R] = generators(1),
+    Pb = mod_exp(G3, R),
+    Qb = mod(mod_exp(2, R) * mod_exp(G2, Y)),
+    {Cp, D5, D6} = proof_eq_coords(2, G2, G3, Y, R, 5),
     {reply,
      {ok,
       {emit,
@@ -99,14 +101,94 @@ wait_user_secret({user_secret, UserInput}, _From,
 	 [G2B, C2, D2, G3B, C3, D3, Pb, Qb, Cp, D5, D6]}]}},
      expect3, State#s{pb = Pb, qb = Qb}}.
 
-expect2(_M, _From, State) ->
-    {stop, {invalid_message, _M}, State}.
+%}}}F
 
-expect3(_M, _From, State) ->
-    {stop, {invalid_message, _M}, State}.
+%F{{{ expect2
+expect2({smp_msg,
+	 {smp_msg_2,
+	  [G2B, C2, D2, G3B, C3, D3, Pb, Qb, Cpin, D5in, D6in]}},
+	_From, #s{a2 = A2, a3 = A3, x = X} = State) ->
+    G2 = mod_exp(G2B, A2),
+    G3 = mod_exp(G3B, A3),
+    case check_knowledge(C2, D2, 2, G2B, 3) and
+	   check_knowledge(C3, D3, 2, G3B, 4)
+	   and
+	   check_eq_coords(Cpin, D5in, D6in, Pb, Qb, 2, G2, G3, 5)
+	of
+      false ->
+	  do_abort({error, proof_checking_failed}, State);
+      true ->
+	  [S] = generators(1),
+	  Pa = mod_exp(G3, S),
+	  Qa = mod(mod_exp(2, S) * mod_exp(G2, X)),
+	  {Cp, D5, D6} = proof_eq_coords(2, G2, G3, X, S, 6),
+	  Pab = mod(Pa * mod_inv(Pb)),
+	  Qab = mod(Qa * mod_inv(Qb)),
+	  Ra = mod_exp(Qab, A3),
+	  {Cr, D7} = proof_eq_logs(2, Qab, A3, 7),
+	  {reply,
+	   {ok,
+	    {emit,
+	     [{smp_msg_3, [Pa, Qa, Cp, D5, D6, Ra, Cr, D7]}]}},
+	   expect4,
+	   State#s{g3b = G3B, pab = Pab, qab = Qab, ra = Ra}}
+    end;
+expect2({user_secret, _}, _From, State) ->
+    {reply, {error, unexpected_user_secret}, expect1,
+     State};
+expect2({smp_msg, smp_abort}, _From, State) ->
+    do_abort({error, net_aborted}, State);
+expect2({smp_msg, _}, _From, State) ->
+    do_abort({error, unexpected_smp_msg}, State).
 
-expect4(_M, _From, State) ->
-    {stop, {invalid_message, _M}, State}.
+%}}}F
+
+expect3({smp_msg,
+	 {smp_msg_3, [Pa, Qa, Cp, D5, D6, Ra, Crin, D7in]}},
+	_From,
+	#s{g2 = G2, g3 = G3, qb = Qb, pb = Pb, b3 = B3,
+	   g3a = G3a} =
+	    State) ->
+    Qab = mod(Qa * mod_inv(Qb)),
+    case check_eq_coords(Cp, D5, D6, Pa, Qa, 2, G2, G3, 6)
+	   and check_eq_logs(Crin, D7in, Qab, Ra, 2, G3a, 7)
+	of
+      false ->
+	  do_abort({error, proof_checking_failed}, State);
+      true ->
+	  Rb = mod_exp(Qab, B3),
+	  Rab = mod_exp(Ra, B3),
+	  Pab = mod(Pa * mod_inv(Pb)),
+	  {Cr, D7} = proof_eq_logs(2, Qab, B3, 8),
+	  Res = case Pab == Rab of
+		  false -> verification_failed;
+		  true -> verification_succeeded
+		end,
+	  {reply, {Res, {emit, [{smp_msg_4, [Rb, Cr, D7]}]}},
+	   expect1, cleaned_state(State)}
+    end;
+expect3({user_secret, _}, _From, State) ->
+    {reply, {error, unexpected_user_secret}, expect1,
+     State};
+expect3({smp_msg, smp_abort}, _From, State) ->
+    do_abort({error, net_aborted}, State);
+expect3({smp_msg, _}, _From, State) ->
+    do_abort({error, unexpected_smp_msg}, State).
+
+expect4({smp_msg, {smp_msg_4, [Rb, Cr, D7]}}, _From,
+	#s{g3b = G3b, pab = Pab, qab = Qab, a3 = A3} = State) ->
+    case check_eq_logs(Cr, D7, Qab, Rb, 2, G3b, 8) of
+      false ->
+	  do_abort({error, proof_checking_failed}, State);
+      true ->
+	  Rab = mod_exp(Rb, A3),
+	  Res = case Pab == Rab of
+		  false -> verification_failed;
+		  true -> verification_succeeded
+		end,
+	  {reply, {Res, {emit, []}}, expect1,
+	   cleaned_state(State)}
+    end.
 
 %}}}F
 
@@ -127,8 +209,8 @@ handle_sync_event({user_start, UserInput}, _From,
 		  expect1, State) ->
     X = compute_x(State, UserInput),
     [A2, A3] = generators(2),
-    G2A = crypto:mod_exp(2, A2, ?DH_MODULUS),
-    G3A = crypto:mod_exp(2, A3, ?DH_MODULUS),
+    G2A = mod_exp(2, A2),
+    G3A = mod_exp(2, A3),
     {C2, D2} = proof_knowledge(2, A2, 1),
     {C3, D3} = proof_knowledge(2, A3, 2),
     {reply,
@@ -162,56 +244,124 @@ do_abort(State) ->
     do_abort({ok, {emit, [smp_abort]}}, State).
 
 do_abort(Reply, State) ->
-    {reply, Reply, expect1,
-     #s{initiator_fp = State#s.initiator_fp,
-	responder_fp = State#s.responder_fp,
-	session_id = State#s.session_id}}.
+    {reply, Reply, expect1, cleaned_state(State)}.
+
+cleaned_state(State) ->
+    #s{initiator_fp = State#s.initiator_fp,
+       responder_fp = State#s.responder_fp,
+       session_id = State#s.session_id}.
 
 compute_x(#s{initiator_fp = Ifp, responder_fp = Rfp,
 	     session_id = SId},
 	  UserInput) ->
-    otr_util:erlint(<<32:32,
-		     (otr_crypto:sha256(<<1:8, Ifp/binary, Rfp/binary,
-					  SId/binary,
-					  UserInput/binary>>))/binary>>).
+    do_hash(1,
+	    <<1:8, Ifp/binary, Rfp/binary, SId/binary,
+	      UserInput/binary>>).
 
-mod(X, Y) when X >= 0 -> X rem Y;
-mod(X, Y) when X < 0 -> Y + X rem Y.
+mod_q(X) when X >= 0 ->
+    X rem (((?DH_MODULUS) - 1) div 2);
+mod_q(X) when X < 0 ->
+    Q = ((?DH_MODULUS) - 1) div 2, Q + X rem Q.
 
-hash_int(V, I) ->
-    Bin = otr_util:mpint(I),
-    otr_util:erlint(<<32:32,
-		      (otr_crypto:sha256(<<V:8, Bin/binary>>))/binary>>).
+mod(X) when X >= 0 -> X rem (?DH_MODULUS);
+mod(X) when X < 0 ->
+    (?DH_MODULUS) + X rem (?DH_MODULUS).
+
+mod_inv(X) -> inv(X, ?DH_MODULUS).
+x1mod_inv(X) ->
+    I = do_mod_inv(X, ?DH_MODULUS, 1, 0),
+    if I < 0 -> (?DH_MODULUS) + 1;
+       true -> I
+    end.
+
+%% inv(A, B) = C | no_inverse
+%%    computes C such that
+%%    A*C mod B = 1
+%% computes A^-1 mod B
+%% examples inv(28, 75) = 67.
+%%          inv(3533, 11200) = 6597
+%%          inv(6597, 11200) = 3533
+
+inv(A, B) ->
+    case solve(A, B) of
+	{X, _Y} ->
+	    if X < 0 -> X + B;
+	       true  -> X
+	    end;
+	_ ->
+	    no_inverse
+    end.
+
+%% solve(A, B) => {X, Y} | insoluble
+%%   solve the linear congruence
+%%   A * X - B * Y = 1
+
+%S tag1
+solve(A, B) ->
+    case catch s(A, B) of
+	insoluble -> insoluble;
+	{X, Y} ->
+	    case A * X - B * Y of
+		1     -> {X, Y};
+		_Other -> error
+	    end
+    end.
+
+s(_A, 0)  -> throw(insoluble);
+s(_A, 1)  -> {0, -1};
+s(_A, -1) -> {0, 1};
+s(A, B)  ->
+    K1 = A div B,
+    K2 = A - K1*B,
+    {Tmp, X} = s(B, -K2),
+    {X, K1 * X - Tmp}.
+
+mod_exp(G, X) -> crypto:mod_exp(G, X, ?DH_MODULUS).
+
+hash_int(V, I) -> do_hash(V, otr_util:mpint(I)).
 
 hash_int(V, I, J) ->
-    Bin = <<(otr_util:mpint(I))/binary,
-	    (otr_util:mpint(J))/binary>>,
+    do_hash(V,
+	    <<(otr_util:mpint(I))/binary,
+	      (otr_util:mpint(J))/binary>>).
+
+do_hash(V, Bin) ->
     otr_util:erlint(<<32:32,
 		      (otr_crypto:sha256(<<V:8, Bin/binary>>))/binary>>).
 
 proof_knowledge(G, X, V) ->
-    R = otr_util:erlint(<<192:32,
-			  (crypto:rand_bytes(192))/binary>>),
-    C = hash_int(V, crypto:mod_exp(G, R, ?DH_MODULUS)),
-    Q = ((?DH_MODULUS) - 1) div 2,
-    {C, mod(R - mod(X * C, Q), Q)}.
+    [R] = generators(1),
+    C = hash_int(V, mod_exp(G, R)),
+    {C, mod_q(R - mod_q(X * C))}.
 
 check_knowledge(C, D, G, X, V) ->
-    GD = crypto:mod_exp(G, D, ?DH_MODULUS),
-    XC = crypto:mod_exp(X, C, ?DH_MODULUS),
-    C == hash_int(V, mod(GD * XC, ?DH_MODULUS)).
+    C == hash_int(V, mod(mod_exp(G, D) * mod_exp(X, C))).
 
-proof_eq_coords(G1, G2, G3, Y, R, V) ->
+proof_eq_coords(G1, G2, G3, X, R, V) ->
     [R1, R2] = generators(2),
-    T1 = crypto:mod_exp(G3, R1, ?DH_MODULUS),
-    T2 = mod(crypto:mod_exp(G1, R1, ?DH_MODULUS) *
-	       crypto:mod_exp(G2, R2, ?DH_MODULUS),
-	     ?DH_MODULUS),
+    T1 = mod_exp(G3, R1),
+    T2 = mod(mod_exp(G1, R1) * mod_exp(G2, R2)),
     C = hash_int(V, T1, T2),
-    Q = ((?DH_MODULUS) - 1) div 2,
-    D1 = mod(R2 - mod(R * C, Q), Q),
-    D2 = mod(R2 - mod(Y * C, Q), Q),
+    D1 = mod_q(R1 - mod_q(R * C)),
+    D2 = mod_q(R2 - mod_q(X * C)),
     {C, D1, D2}.
 
-    %}}}F
+check_eq_coords(C, D1, D2, P, Q, G1, G2, G3, V) ->
+    Tmp1 = mod(mod_exp(G3, D1) * mod_exp(P, C)),
+    Tmp2 = mod(mod(mod_exp(G1, D1) * mod_exp(G2, D2)) *
+		 mod_exp(Q, C)),
+    C == hash_int(V, Tmp1, Tmp2).
+
+proof_eq_logs(G1, Qab, X, V) ->
+    [R] = generators(1),
+    C = hash_int(V, mod_exp(G1, R), mod_exp(Qab, R)),
+    D = mod_q(R - mod_q(X * C)),
+    {C, D}.
+
+check_eq_logs(C, D, Qab, R, G1, G3o, V) ->
+    Tmp1 = mod(mod_exp(G1, D) * mod_exp(G3o, C)),
+    Tmp2 = mod(mod_exp(Qab, D) * mod_exp(R, C)),
+    C == hash_int(V, Tmp1, Tmp2).
+
+%}}}F
 
