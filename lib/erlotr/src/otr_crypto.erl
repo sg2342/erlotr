@@ -12,11 +12,18 @@
 
 -include("otr_internal.hrl").
 
--export([aes_ctr_128_decrypt/3, aes_ctr_128_encrypt/3,
-	 aes_ecb_128_decrypt/2, aes_ecb_128_encrypt/2,
-	 dh_agree/2, dh_gen_key/0, dsa_sign/2, dsa_verify/3,
-	 sha1/1, sha1/3, sha1HMAC/2, sha256/1,
-	 sha256/3, sha256HMAC/2]).
+-export([aes_ctr_128_decrypt/3, aes_ctr_128_encrypt/3]).
+
+-export([dh_agree/2, dh_gen_key/0]).
+
+-export([dsa_sign/2, dsa_verify/3]).
+
+-export([sha1/1, sha1/3, sha1HMAC/2, sha256/1, sha256/3,
+	 sha256HMAC/2]).
+
+-export([mod/2, mod_exp/3, mod_inv/2]).
+
+-export([rand_bytes/1, rand_int/1]).
 
 %F{{{ ...HMAC...
 sha1HMAC(Key, Data) -> crypto:sha_mac(Key, Data).
@@ -55,24 +62,10 @@ sha256(Data, Offset, Length)
 	Data,
     crypto:sha256(Part).%}}}F
 
-%F{{{ aes_ecb_ ...
-%
-% abuse CBC mode with an IV of 0 to have ECB mode functionality
-%
-aes_ecb_128_encrypt(Key, Block) ->
-    crypto:aes_cbc_128_encrypt(Key, <<0:128>>, Block).
-
-aes_ecb_128_decrypt(Key, Block) ->
-    crypto:aes_cbc_128_decrypt(Key, <<0:128>>, Block).%}}}F
-
 %F{{{ aes_ctr_128 ...
 aes_ctr_128_decrypt(Key, Nonce, Data) ->
     aes_ctr_128_encrypt(Key, Nonce, Data).
 
-aes_ctr_128_encrypt(Key, Nonce, Data)
-    when size(Key) == 16, size(Nonce) == 8,
-	 is_list(Data) ->
-    do_aes_ctr_128(Key, {Nonce, 0}, list_to_binary(Data), <<>>);
 aes_ctr_128_encrypt(Key, Nonce, Data)
     when size(Key) == 16, size(Nonce) == 8,
 	 is_binary(Data) ->
@@ -110,22 +103,22 @@ do_aes_ctr_128(Key, {Nonce, Counter}, Plaintext,
 dsa_sign(_DsaKey = [P, Q, G, X, _], Data) ->
     dsa_sign([P, Q, G, X], Data);
 dsa_sign(_PrivateKey = [P, Q, G, X], Data) ->
-    K = crypto:erlint(<<20:32, (crypto:rand_bytes(20))/binary>>) rem Q,
-    R = ipow(G, K, P) rem Q,
-    Ki = invert(K, Q),
+    K = mod(rand_int(20), Q),
+    R = mod(mod_exp(G, K, P), Q),
+    Ki = mod_inv(K, Q),
     BS = size(Data) bsl 3,
     <<M:BS/big-unsigned-integer>> = Data,
-    S = Ki * (M + X * R) rem Q,
+    S = mod(Ki * (M + X * R), Q),
     {R, S}.
 
 dsa_verify(_PublicKey = [P, Q, G, Y], Data, {R0, S0}) ->
-    W = invert(S0, Q),
+    W = mod_inv(S0, Q),
     BS = size(Data) bsl 3,
     <<M0:BS/big-unsigned-integer>> = Data,
     U1 = M0 * W rem Q,
     U2 = R0 * W rem Q,
-    T1 = ipow(G, U1, P),
-    T2 = ipow(Y, U2, P),
+    T1 = mod_exp(G, U1, P),
+    T2 = mod_exp(Y, U2, P),
     V = T1 * T2 rem P rem Q,
     V == R0.
 
@@ -135,25 +128,32 @@ dsa_verify(_PublicKey = [P, Q, G, Y], Data, {R0, S0}) ->
 
 dh_gen_key() ->
     P = (?DH_MODULUS),
-    Private = crypto:erlint(<<320:32, (crypto:rand_bytes(320))/binary>>),
-    Public = ipow(2, Private, P),
+    Private = crypto:erlint(<<320:32,
+			      (crypto:rand_bytes(320))/binary>>),
+    Public = mod_exp(2, Private, P),
     if (Public >= 2) and (Public =< (?DH_MODULUS) - 2) ->
 	   {Private, Public};
        true -> dh_gen_key()
     end.
 
 dh_agree(Private, PeerPub) ->
-    ipow(PeerPub, Private, ?DH_MODULUS).
+    mod_exp(PeerPub, Private, ?DH_MODULUS).
 
 %}}}F
 
-%F{{{ internal functions
+mod(X, P) when X >= 0 -> X rem P;
+mod(X, P) when X < 0 -> P + X rem P.
 
-ipow(A, B, M) when M > 0, B >= 0 ->
+rand_int(Nb) ->
+    otr_util:erlint(<<Nb:32, (rand_bytes(Nb))/binary>>).
+
+rand_bytes(Nb) -> crypto:rand_bytes(Nb).
+
+% stolen from ssh-1.1.6/src/ssh_math.erl
+mod_exp(A, B, M) when M > 0, B >= 0 ->
     crypto:mod_exp(A, B, M).
 
-invert(X, P)
-    when X > 0, P > 0, X < P -> %F{{{
+mod_inv(X, P) when X > 0, P > 0, X < P ->
     I = inv(X, P, 1, 0),
     if I < 0 -> P + I;
        true -> I
@@ -161,10 +161,4 @@ invert(X, P)
 
 inv(0, _, _, Q) -> Q;
 inv(X, P, R1, Q1) ->
-    D = P div X,
-    inv(P rem X, X, Q1 - D * R1, R1).
-    
- %}}}F
-
-%}}}F
-
+    D = P div X, inv(P rem X, X, Q1 - D * R1, R1).

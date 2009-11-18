@@ -14,7 +14,11 @@
 
 -behaviour(gen_fsm).
 
--compile(export_all).
+-define(CG(X), (X >= 2) and (X =< (?DH_MODULUS) - 2)).
+
+-define(CO(X),
+	(X >= 1) and (X =< ((?DH_MODULUS) - 1) div 2)).
+
 % gen_fsm callbacks
 -export([code_change/4, handle_event/3, handle_info/3,
 	 handle_sync_event/4, init/1, terminate/3]).
@@ -53,14 +57,16 @@ smp_msg(Pid, M) ->
 %F{{{ expect1/3
 expect1({smp_msg,
 	 {smp_msg_1, [G2A, C2, D2, G3A, C3, D3]}},
-	_From, State) ->
+	_From, State)
+    when ?CG(G2A), ?CG(G3A), ?CO(D2), ?CO(D3) ->
     case check_knowledge(C2, D2, 2, G2A, 1) and
 	   check_knowledge(C3, D3, 2, G3A, 2)
 	of
       false ->
 	  do_abort({error, proof_checking_failed}, State);
       true ->
-	  [B2, B3] = generators(2),
+	  B2 = otr_crypto:rand_int(192),
+	  B3 = otr_crypto:rand_int(192),
 	  G2 = mod_exp(G2A, B2),
 	  G3 = mod_exp(G3A, B3),
 	  {reply, {ok, need_user_secret}, wait_user_secret,
@@ -85,12 +91,11 @@ wait_user_secret({smp_msg, _}, _From, State) ->
 wait_user_secret({user_secret, UserInput}, _From,
 		 #s{b2 = B2, b3 = B3, g2 = G2, g3 = G3} = State) ->
     Y = compute_x(State, UserInput),
-
     G2B = mod_exp(2, B2),
     G3B = mod_exp(2, B3),
     {C2, D2} = proof_knowledge(2, B2, 3),
     {C3, D3} = proof_knowledge(2, B3, 4),
-    [R] = generators(1),
+    R = otr_crypto:rand_int(192),
     Pb = mod_exp(G3, R),
     Qb = mod(mod_exp(2, R) * mod_exp(G2, Y)),
     {Cp, D5, D6} = proof_eq_coords(2, G2, G3, Y, R, 5),
@@ -107,7 +112,9 @@ wait_user_secret({user_secret, UserInput}, _From,
 expect2({smp_msg,
 	 {smp_msg_2,
 	  [G2B, C2, D2, G3B, C3, D3, Pb, Qb, Cpin, D5in, D6in]}},
-	_From, #s{a2 = A2, a3 = A3, x = X} = State) ->
+	_From, #s{a2 = A2, a3 = A3, x = X} = State)
+    when ?CG(G2B), ?CG(G3B), ?CG(Pb), ?CG(Qb), ?CO(D2),
+	 ?CO(D3), ?CO(D5in), ?CO(D6in) ->
     G2 = mod_exp(G2B, A2),
     G3 = mod_exp(G3B, A3),
     case check_knowledge(C2, D2, 2, G2B, 3) and
@@ -118,7 +125,7 @@ expect2({smp_msg,
       false ->
 	  do_abort({error, proof_checking_failed}, State);
       true ->
-	  [S] = generators(1),
+	  S = otr_crypto:rand_int(192),
 	  Pa = mod_exp(G3, S),
 	  Qa = mod(mod_exp(2, S) * mod_exp(G2, X)),
 	  {Cp, D5, D6} = proof_eq_coords(2, G2, G3, X, S, 6),
@@ -134,7 +141,7 @@ expect2({smp_msg,
 	   State#s{g3b = G3B, pab = Pab, qab = Qab, ra = Ra}}
     end;
 expect2({user_secret, _}, _From, State) ->
-    {reply, {error, unexpected_user_secret}, expect1,
+    {reply, {error, unexpected_user_secret}, expect2,
      State};
 expect2({smp_msg, smp_abort}, _From, State) ->
     do_abort({error, net_aborted}, State);
@@ -143,12 +150,15 @@ expect2({smp_msg, _}, _From, State) ->
 
 %}}}F
 
+%F{{{ expect3
 expect3({smp_msg,
 	 {smp_msg_3, [Pa, Qa, Cp, D5, D6, Ra, Crin, D7in]}},
 	_From,
 	#s{g2 = G2, g3 = G3, qb = Qb, pb = Pb, b3 = B3,
 	   g3a = G3a} =
-	    State) ->
+	    State)
+    when ?CG(Pa), ?CG(Qa), ?CG(Ra), ?CO(D5), ?CO(D6),
+	 ?CO(D7in) ->
     Qab = mod(Qa * mod_inv(Qb)),
     case check_eq_coords(Cp, D5, D6, Pa, Qa, 2, G2, G3, 6)
 	   and check_eq_logs(Crin, D7in, Qab, Ra, 2, G3a, 7)
@@ -168,15 +178,19 @@ expect3({smp_msg,
 	   expect1, cleaned_state(State)}
     end;
 expect3({user_secret, _}, _From, State) ->
-    {reply, {error, unexpected_user_secret}, expect1,
+    {reply, {error, unexpected_user_secret}, expect3,
      State};
 expect3({smp_msg, smp_abort}, _From, State) ->
     do_abort({error, net_aborted}, State);
 expect3({smp_msg, _}, _From, State) ->
     do_abort({error, unexpected_smp_msg}, State).
 
+%}}}F
+
+%F{{{ expect4
 expect4({smp_msg, {smp_msg_4, [Rb, Cr, D7]}}, _From,
-	#s{g3b = G3b, pab = Pab, qab = Qab, a3 = A3} = State) ->
+	#s{g3b = G3b, pab = Pab, qab = Qab, a3 = A3} = State)
+    when ?CG(Rb), ?CO(D7) ->
     case check_eq_logs(Cr, D7, Qab, Rb, 2, G3b, 8) of
       false ->
 	  do_abort({error, proof_checking_failed}, State);
@@ -188,7 +202,16 @@ expect4({smp_msg, {smp_msg_4, [Rb, Cr, D7]}}, _From,
 		end,
 	  {reply, {Res, {emit, []}}, expect1,
 	   cleaned_state(State)}
-    end.
+    end;
+expect4({user_secret, _}, _From, State) ->
+    {reply, {error, unexpected_user_secret}, expect4,
+     State};
+expect4({smp_msg, smp_abort}, _From, State) ->
+    do_abort({error, net_aborted}, State);
+expect4({smp_msg, _}, _From, State) ->
+    do_abort({error, unexpected_smp_msg}, State).
+
+%}}}F
 
 %}}}F
 
@@ -208,7 +231,8 @@ handle_event(Event, StateName, StateData) ->
 handle_sync_event({user_start, UserInput}, _From,
 		  expect1, State) ->
     X = compute_x(State, UserInput),
-    [A2, A3] = generators(2),
+    A2 = otr_crypto:rand_int(192),
+    A3 = otr_crypto:rand_int(192),
     G2A = mod_exp(2, A2),
     G3A = mod_exp(2, A3),
     {C2, D2} = proof_knowledge(2, A2, 1),
@@ -231,14 +255,6 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %}}}F
 
 %F{{{ internal functions
-generators(N) -> do_generators(N, []).
-
-do_generators(0, Acc) -> Acc;
-do_generators(N, Acc) ->
-    do_generators(N - 1,
-		  [otr_util:erlint(<<192:32,
-				     (crypto:rand_bytes(192))/binary>>)
-		   | Acc]).
 
 do_abort(State) ->
     do_abort({ok, {emit, [smp_abort]}}, State).
@@ -258,65 +274,14 @@ compute_x(#s{initiator_fp = Ifp, responder_fp = Rfp,
 	    <<1:8, Ifp/binary, Rfp/binary, SId/binary,
 	      UserInput/binary>>).
 
-mod_q(X) when X >= 0 ->
-    X rem (((?DH_MODULUS) - 1) div 2);
-mod_q(X) when X < 0 ->
-    Q = ((?DH_MODULUS) - 1) div 2, Q + X rem Q.
+mod(X) -> otr_crypto:mod(X, ?DH_MODULUS).
 
-mod(X) when X >= 0 -> X rem (?DH_MODULUS);
-mod(X) when X < 0 ->
-    (?DH_MODULUS) + X rem (?DH_MODULUS).
+mod_q(X) ->
+    otr_crypto:mod(X, ((?DH_MODULUS) - 1) div 2).
 
-mod_inv(X) -> inv(X, ?DH_MODULUS).
-x1mod_inv(X) ->
-    I = do_mod_inv(X, ?DH_MODULUS, 1, 0),
-    if I < 0 -> (?DH_MODULUS) + 1;
-       true -> I
-    end.
+mod_inv(X) -> otr_crypto:mod_inv(X, ?DH_MODULUS).
 
-%% inv(A, B) = C | no_inverse
-%%    computes C such that
-%%    A*C mod B = 1
-%% computes A^-1 mod B
-%% examples inv(28, 75) = 67.
-%%          inv(3533, 11200) = 6597
-%%          inv(6597, 11200) = 3533
-
-inv(A, B) ->
-    case solve(A, B) of
-	{X, _Y} ->
-	    if X < 0 -> X + B;
-	       true  -> X
-	    end;
-	_ ->
-	    no_inverse
-    end.
-
-%% solve(A, B) => {X, Y} | insoluble
-%%   solve the linear congruence
-%%   A * X - B * Y = 1
-
-%S tag1
-solve(A, B) ->
-    case catch s(A, B) of
-	insoluble -> insoluble;
-	{X, Y} ->
-	    case A * X - B * Y of
-		1     -> {X, Y};
-		_Other -> error
-	    end
-    end.
-
-s(_A, 0)  -> throw(insoluble);
-s(_A, 1)  -> {0, -1};
-s(_A, -1) -> {0, 1};
-s(A, B)  ->
-    K1 = A div B,
-    K2 = A - K1*B,
-    {Tmp, X} = s(B, -K2),
-    {X, K1 * X - Tmp}.
-
-mod_exp(G, X) -> crypto:mod_exp(G, X, ?DH_MODULUS).
+mod_exp(G, X) -> otr_crypto:mod_exp(G, X, ?DH_MODULUS).
 
 hash_int(V, I) -> do_hash(V, otr_util:mpint(I)).
 
@@ -330,7 +295,7 @@ do_hash(V, Bin) ->
 		      (otr_crypto:sha256(<<V:8, Bin/binary>>))/binary>>).
 
 proof_knowledge(G, X, V) ->
-    [R] = generators(1),
+    R = otr_crypto:rand_int(192),
     C = hash_int(V, mod_exp(G, R)),
     {C, mod_q(R - mod_q(X * C))}.
 
@@ -338,7 +303,8 @@ check_knowledge(C, D, G, X, V) ->
     C == hash_int(V, mod(mod_exp(G, D) * mod_exp(X, C))).
 
 proof_eq_coords(G1, G2, G3, X, R, V) ->
-    [R1, R2] = generators(2),
+    R1 = otr_crypto:rand_int(192),
+    R2 = otr_crypto:rand_int(192),
     T1 = mod_exp(G3, R1),
     T2 = mod(mod_exp(G1, R1) * mod_exp(G2, R2)),
     C = hash_int(V, T1, T2),
@@ -353,7 +319,7 @@ check_eq_coords(C, D1, D2, P, Q, G1, G2, G3, V) ->
     C == hash_int(V, Tmp1, Tmp2).
 
 proof_eq_logs(G1, Qab, X, V) ->
-    [R] = generators(1),
+    R = otr_crypto:rand_int(192),
     C = hash_int(V, mod_exp(G1, R), mod_exp(Qab, R)),
     D = mod_q(R - mod_q(X * C)),
     {C, D}.

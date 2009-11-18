@@ -29,7 +29,9 @@ all() ->
      wus_smp_abort, wus_smp_inv, wus_user_secret,
      e2_user_secret, e2_smp_inv, e2_smp_abort, e2_smp_2_1,
      e2_smp_2_2, e3_user_secret, e3_smp_inv, e3_smp_abort,
-     e3_smp_3_1, e3_smp_3_2, e3_smp_3_3, e4_smp_4_1, cover].
+     e3_smp_3_1, e3_smp_3_2, e3_smp_3_3, e4_user_secret,
+     e4_smp_inv, e4_smp_abort, e4_smp_4_1, e4_smp_4_2,
+     e4_smp_4_3, cover].
 
 init_per_testcase(_TestCase, Config) ->
     start_smp_fsm(Config).
@@ -136,8 +138,8 @@ e2_smp_2_1(_Config) ->
     {ok, {emit, [_]}} = otr_smp_fsm:smp_msg(smp1, M2).
 
 e2_smp_2_2(_Config) ->
-    ct:comment("smp_msg_2 from net while in state [expect2] wh"
-	       "en the knowledge proof fails the check"),
+    ct:comment("smp_msg_2 from net while in state [expect2] "
+	       "when the knowledge proof fails the check"),
     {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
 						<<"s">>),
     {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
@@ -188,27 +190,32 @@ e3_smp_inv(_Config) ->
 						      {smp_msg_4, []}).
 
 e3_smp_3_1(_Config) ->
-    ct:comment("smp_msg_3 from net while in state [expect3], verification succeeded"),
+    ct:comment("smp_msg_3 from net while in state [expect3], "
+	       "verification succeeded"),
     {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
 						<<"s">>),
     {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
     {ok, {emit, [M2]}} = otr_smp_fsm:user_secret(smp2,
 						 <<"s">>),
     {ok, {emit, [M3]}} = otr_smp_fsm:smp_msg(smp1, M2),
-    {verification_succeeded, {emit, [M4]}} =  otr_smp_fsm:smp_msg(smp2, M3).
+    {verification_succeeded, {emit, [_]}} =
+	otr_smp_fsm:smp_msg(smp2, M3).
 
 e3_smp_3_2(_Config) ->
-    ct:comment("smp_msg_3 from net while in state [expect3], verification failed"),
+    ct:comment("smp_msg_3 from net while in state [expect3], "
+	       "verification failed"),
     {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
 						<<"s1223">>),
     {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
     {ok, {emit, [M2]}} = otr_smp_fsm:user_secret(smp2,
 						 <<"t">>),
     {ok, {emit, [M3]}} = otr_smp_fsm:smp_msg(smp1, M2),
-    {verification_failed, {emit, [M4]}} =  otr_smp_fsm:smp_msg(smp2, M3).
+    {verification_failed, {emit, [_]}} =
+	otr_smp_fsm:smp_msg(smp2, M3).
 
 e3_smp_3_3(_Config) ->
-    ct:comment("smp_msg_3 from net while in state [expect3], knowledge proof failed"),
+    ct:comment("smp_msg_3 from net while in state [expect3], "
+	       "knowledge proof failed"),
     {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
 						<<"s1223">>),
     {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
@@ -216,26 +223,97 @@ e3_smp_3_3(_Config) ->
 						 <<"t">>),
     {ok, {emit, [M3]}} = otr_smp_fsm:smp_msg(smp1, M2),
     {smp_msg_3, [A, B, C, D, E, F, G, H]} = M3,
-    N = {smp_msg_3, [A, B, C, D, E, F, G, H -1]}, 
-    {error, proof_checking_failed} =otr_smp_fsm:smp_msg(smp2, N).
-
-
+    N = {smp_msg_3, [A, B, C, D, E, F, G, H - 1]},
+    {error, proof_checking_failed} =
+	otr_smp_fsm:smp_msg(smp2, N).
 
 %}}}F
+
+%F{{{ e4_..../1
+
+e4_user_secret(_Config) ->
+    ct:comment("user supplied secret while in state "
+	       "[expect4]"),
+    {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
+						<<"s">>),
+    {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
+    {ok, {emit, [M2]}} = otr_smp_fsm:user_secret(smp2,
+						 <<"s">>),
+    {ok, {emit, [_]}} = otr_smp_fsm:smp_msg(smp1, M2),
+    {error, unexpected_user_secret} =
+	otr_smp_fsm:user_secret(smp1, <<"some secret">>).
+
+e4_smp_inv(_Config) ->
+    ct:comment("smp msg that is not smp_msg_4 from net "
+	       "while in state [expect4]"),
+    {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
+						<<"s">>),
+    {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
+    {ok, {emit, [M2]}} = otr_smp_fsm:user_secret(smp2,
+						 <<"s">>),
+    {ok, {emit, [_]}} = otr_smp_fsm:smp_msg(smp1, M2),
+    {error, unexpected_smp_msg} = otr_smp_fsm:smp_msg(smp1,
+						      {smp_msg_1, []}).
+
+e4_smp_abort(_Config) ->
+    ct:comment("smp_abort from net while in state [expect4]"),
+    {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
+						<<"s">>),
+    {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
+    {ok, {emit, [M2]}} = otr_smp_fsm:user_secret(smp2,
+						 <<"s">>),
+    {ok, {emit, [_]}} = otr_smp_fsm:smp_msg(smp1, M2),
+    {error, net_aborted} = otr_smp_fsm:smp_msg(smp1,
+					       smp_abort).
+
 e4_smp_4_1(_Config) ->
-    ct:comment("smp_msg_4 from net while in state [expect4], verification succeeded"),
+    ct:comment("smp_msg_4 from net while in state [expect4], "
+	       "verification succeeded"),
     {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
 						<<"s">>),
     {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
     {ok, {emit, [M2]}} = otr_smp_fsm:user_secret(smp2,
 						 <<"s">>),
     {ok, {emit, [M3]}} = otr_smp_fsm:smp_msg(smp1, M2),
-    {verification_succeeded, {emit, [M4]}} =  otr_smp_fsm:smp_msg(smp2, M3),
-    {verification_succeeded, {emit, []}} = otr_smp_fsm:smp_msg(smp1, M4).
+    {verification_succeeded, {emit, [M4]}} =
+	otr_smp_fsm:smp_msg(smp2, M3),
+    {verification_succeeded, {emit, []}} =
+	otr_smp_fsm:smp_msg(smp1, M4).
 
+e4_smp_4_2(_Config) ->
+    ct:comment("smp_msg_4 from net while in state [expect4], "
+	       "verification failed"),
+    {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
+						<<"X">>),
+    {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
+    {ok, {emit, [M2]}} = otr_smp_fsm:user_secret(smp2,
+						 <<"U">>),
+    {ok, {emit, [M3]}} = otr_smp_fsm:smp_msg(smp1, M2),
+    {verification_failed, {emit, [M4]}} =
+	otr_smp_fsm:smp_msg(smp2, M3),
+    {verification_failed, {emit, []}} =
+	otr_smp_fsm:smp_msg(smp1, M4).
 
+e4_smp_4_3(_Config) ->
+    ct:comment("smp_msg_4 from net while in state [expect4], "
+	       "knowledge proof failed"),
+    {ok, {emit, [M1]}} = otr_smp_fsm:user_start(smp1,
+						<<"s">>),
+    {ok, need_user_secret} = otr_smp_fsm:smp_msg(smp2, M1),
+    {ok, {emit, [M2]}} = otr_smp_fsm:user_secret(smp2,
+						 <<"s">>),
+    {ok, {emit, [M3]}} = otr_smp_fsm:smp_msg(smp1, M2),
+    {verification_succeeded, {emit, [M4]}} =
+	otr_smp_fsm:smp_msg(smp2, M3),
+    {smp_msg_4, [A, B, C]} = M4,
+    N = {smp_msg_4, [A + 1, B, C]},
+    {error, proof_checking_failed} =
+	otr_smp_fsm:smp_msg(smp1, N).
+
+%}}}F
 
 %F{{{
+
 cover(_Config) ->
     ct:comment("achive 100% coverage: call code_change/4, "
 	       "terminate/3 and the handle_... functions "
@@ -269,6 +347,7 @@ user_start_2(_Config) ->
 %}}}F
 
 %F{{{ internal functions
+
 start_smp_fsm(Config) ->
     {ok, Smp1} = otr_smp_fsm:start_link(<<1:160>>,
 					<<2:160>>, <<3:64>>),
@@ -284,5 +363,7 @@ stop_smp_fsm(Config) ->
 			  catch exit(whereis(X), shutdown)
 		  end,
 		  [smp1, smp2]),
-    Config.%}}}F
+    Config.
+
+%}}}F
 

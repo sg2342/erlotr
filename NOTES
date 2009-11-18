@@ -4,7 +4,7 @@ run testcase foo from suite bar:
 
  Suites=foo,
  Cases=bar,
- ct:run_test([{suite, Suites}, {dir,  "lib/erlotr"}, {testcase, Cases}, {logdir, "log"}, {cover, "cover.spec"}, {include, element(2, file:get_cwd())  ++ "/lib/erlotr/src"}]).
+RT = fun(Suites, Cases) -> ct:run_test([{suite, Suites}, {dir,  "lib/erlotr"}, {testcase, Cases}, {logdir, "log"}, {cover, "cover.spec"}, {include, element(2, file:get_cwd())  ++ "/lib/erlotr/src"}]) end.
 
 ----------------------------------------------------------------------------
 

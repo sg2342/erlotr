@@ -195,7 +195,7 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %F{{{ internal functions
 
 send_dh_commit(State) ->
-    R = crypto:rand_bytes(16),
+    R = otr_crypto:rand_bytes(16),
     {_, Gx} = State#s.dh_key,
     MpiGx = otr_util:mpint(Gx),
     EncGx = otr_crypto:aes_ctr_128_encrypt(R, <<0:64>>,
