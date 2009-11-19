@@ -93,7 +93,7 @@ d_smp_msg_s(_C) ->
 d_error(_C) ->
     ct:comment("fail to decode messages with invalid "
 	       "tlv records"),
-    {"some text", error} = otr_tlv:decode(<<"some text", 0,
+    {"some text", [{smp_msg_1q, [], error}]} = otr_tlv:decode(<<"some text", 0,
 					    7:16, 0:16>>),
     {"some text", error} = otr_tlv:decode(<<"some text", 0,
 					    0:16, 0:16, 0:16>>).

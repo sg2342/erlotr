@@ -75,10 +75,14 @@ dec_tlv(<<5:16, L:16, V:L/binary, Rest/binary>>, Acc) ->
     dec_tlv(Rest, [{smp_msg_4, dec_smp_mpi_lst(V)} | Acc]);
 dec_tlv(<<6:16, L:16, _V:L/binary, Rest/binary>>, Acc) ->
     dec_tlv(Rest, [smp_abort | Acc]);
+dec_tlv(<<7:16, L:16, V:L/binary, Rest/binary>>, Acc) ->
+    {Q, B} = split_parts(V),
+    dec_tlv(Rest, [{smp_msg_1q, Q, dec_smp_mpi_lst(B)} | Acc]);
 dec_tlv(_, _) -> error.
 
 dec_smp_mpi_lst(<<Count:32, V/binary>>) ->
-    do_decode_smp_mpi_lst(Count, V, []).
+    do_decode_smp_mpi_lst(Count, V, []);
+dec_smp_mpi_lst(_) -> error.
 
 do_decode_smp_mpi_lst(0, <<>>, Acc) ->
     lists:reverse(Acc);
