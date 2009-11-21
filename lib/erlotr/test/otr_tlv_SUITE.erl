@@ -15,7 +15,7 @@ end_per_testcase(_TestCase, Config) -> Config.
 all() ->
     [e_empty, d_empty, e_padding, d_padding, e_disconnected,
      d_disconnected, e_smp_abort, d_smp_abort, e_smp_msg_s,
-     d_smp_msg_s, d_error, d_error_smp].
+     d_smp_msg_s, d_error, d_error_smp, d_unknown].
 
 e_empty(_C) ->
     ct:comment("encode empty messages"),
@@ -76,7 +76,11 @@ e_smp_msg_s(_C) ->
 	otr_tlv:encode({"some text", [{smp_msg_4, []}]}),
     <<0, 2:16, 14:16, 2:32, 0, 0, 0, 1, 23, 0, 0, 0, 1,
       42>> =
-	otr_tlv:encode({[], [{smp_msg_1, [23, 42]}]}).
+	otr_tlv:encode({[], [{smp_msg_1, [23, 42]}]}),
+    <<0, 7:16, 18:16, "XXX", 0, 2:32, 0, 0, 0, 1, 23, 0, 0,
+      0, 1, 42>> =
+	otr_tlv:encode({[],
+			[{smp_msg_1q, <<"XXX">>, [23, 42]}]}).
 
 d_smp_msg_s(_C) ->
     ct:comment("decode messages with SMP Message records"),
@@ -88,13 +92,16 @@ d_smp_msg_s(_C) ->
     {"some text", [{smp_msg_3, []}]} =
 	otr_tlv:decode(<<"some text", 0, 4:16, 4:16, 0:32>>),
     {"some text", [{smp_msg_4, []}]} =
-	otr_tlv:decode(<<"some text", 0, 5:16, 4:16, 0:32>>).
+	otr_tlv:decode(<<"some text", 0, 5:16, 4:16, 0:32>>),
+    {[], [{smp_msg_1q, "XXX", [23, 42]}]} =
+	otr_tlv:decode(<<0, 7:16, 18:16, "XXX", 0, 2:32, 0, 0,
+			 0, 1, 23, 0, 0, 0, 1, 42>>).
 
 d_error(_C) ->
     ct:comment("fail to decode messages with invalid "
 	       "tlv records"),
-    {"some text", [{smp_msg_1q, [], error}]} = otr_tlv:decode(<<"some text", 0,
-					    7:16, 0:16>>),
+    {"some text", [{smp_msg_1q, [], error}]} =
+	otr_tlv:decode(<<"some text", 0, 7:16, 0:16>>),
     {"some text", error} = otr_tlv:decode(<<"some text", 0,
 					    0:16, 0:16, 0:16>>).
 
@@ -106,3 +113,8 @@ d_error_smp(_C) ->
 						  4:16, 1:32>>),
     {"", [{smp_msg_2, error}]} = otr_tlv:decode(<<0, 3:16,
 						  5:16, 1:32, 9>>).
+
+d_unknown(_C) ->
+    ct:comment("ignore unknown type"),
+    {"foo", []} = otr_tlv:decode(<<"foo", 0, 19:16, 2:16, 0,
+				   0>>).

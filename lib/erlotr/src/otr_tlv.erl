@@ -25,12 +25,17 @@ decode(Bin) ->
 
 %F{{{ internal functions
 encode_tlvs([], Acc) -> Acc;
-encode_tlvs([{padding, I} | Rest], Acc) when is_integer(I) ->
+encode_tlvs([{padding, I} | Rest], Acc)
+    when is_integer(I) ->
     encode_tlvs(Rest,
 		<<Acc/binary, 0:16, I:16, 0:(I bsl 3)>>);
 encode_tlvs([disconnected | Rest], Acc) ->
+    encode_tlvs(Rest, <<Acc/binary, 1:16, 0:16>>);
+encode_tlvs([{smp_msg_1q, Q, V} | Rest], Acc) ->
+    L = encode_smp_mpi_lst(V),
     encode_tlvs(Rest,
-		<<Acc/binary, 1:16, 0:16>>);
+		<<Acc/binary, 7:16, (size(Q) + 1 + size(L)):16,
+		  Q/binary, 0:8, L/binary>>);
 encode_tlvs([{smp_msg_1, V} | Rest], Acc) ->
     L = encode_smp_mpi_lst(V),
     encode_tlvs(Rest,
@@ -48,8 +53,7 @@ encode_tlvs([{smp_msg_4, V} | Rest], Acc) ->
     encode_tlvs(Rest,
 		<<Acc/binary, 5:16, (size(L)):16, L/binary>>);
 encode_tlvs([smp_abort | Rest], Acc) ->
-    encode_tlvs(Rest,
-		<<Acc/binary, 6:16, 0:16>>).
+    encode_tlvs(Rest, <<Acc/binary, 6:16, 0:16>>).
 
 encode_smp_mpi_lst([]) -> <<0:32>>;
 encode_smp_mpi_lst(L) when is_list(L) ->
@@ -61,9 +65,11 @@ do_encode_smp_mpi_lst([Int | Rest], Acc) ->
 			  <<Acc/binary, (otr_util:mpint(Int))/binary>>).
 
 dec_tlv(<<>>, Acc) -> lists:reverse(Acc);
-dec_tlv(<<0:16, L:16, _V:L/binary, Rest/binary>>, Acc) ->
+dec_tlv(<<0:16, L:16, _V:L/binary, Rest/binary>>,
+	Acc) ->
     dec_tlv(Rest, [{padding, L} | Acc]);
-dec_tlv(<<1:16, L:16, _V:L/binary, Rest/binary>>, Acc) ->
+dec_tlv(<<1:16, L:16, _V:L/binary, Rest/binary>>,
+	Acc) ->
     dec_tlv(Rest, [disconnected | Acc]);
 dec_tlv(<<2:16, L:16, V:L/binary, Rest/binary>>, Acc) ->
     dec_tlv(Rest, [{smp_msg_1, dec_smp_mpi_lst(V)} | Acc]);
@@ -73,11 +79,16 @@ dec_tlv(<<4:16, L:16, V:L/binary, Rest/binary>>, Acc) ->
     dec_tlv(Rest, [{smp_msg_3, dec_smp_mpi_lst(V)} | Acc]);
 dec_tlv(<<5:16, L:16, V:L/binary, Rest/binary>>, Acc) ->
     dec_tlv(Rest, [{smp_msg_4, dec_smp_mpi_lst(V)} | Acc]);
-dec_tlv(<<6:16, L:16, _V:L/binary, Rest/binary>>, Acc) ->
+dec_tlv(<<6:16, L:16, _V:L/binary, Rest/binary>>,
+	Acc) ->
     dec_tlv(Rest, [smp_abort | Acc]);
 dec_tlv(<<7:16, L:16, V:L/binary, Rest/binary>>, Acc) ->
     {Q, B} = split_parts(V),
-    dec_tlv(Rest, [{smp_msg_1q, Q, dec_smp_mpi_lst(B)} | Acc]);
+    dec_tlv(Rest,
+	    [{smp_msg_1q, Q, dec_smp_mpi_lst(B)} | Acc]);
+dec_tlv(<<_T:16, _L:16, _V:_L/binary, Rest/binary>>,
+	Acc) ->
+    dec_tlv(Rest, Acc);
 dec_tlv(_, _) -> error.
 
 dec_smp_mpi_lst(<<Count:32, V/binary>>) ->
@@ -102,3 +113,4 @@ split_parts(Bin) ->
     end.
 
 %}}}F
+
