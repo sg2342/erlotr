@@ -24,9 +24,9 @@ end_per_suite(Config) ->
     Config.
 
 all() ->
-    [user_abort, user_start_1, user_start_2, e1_user_secret,
-     e1_smp_inv, e1_smp_abort, e1_smp_1_1, e1_smp_1_2,
-     wus_smp_abort, wus_smp_inv, wus_user_secret,
+    [user_abort, user_start_1, user_start_2, user_start_3,
+     e1_user_secret, e1_smp_inv, e1_smp_abort, e1_smp_1_1,
+     e1_smp_1_2, wus_smp_abort, wus_smp_inv, wus_user_secret,
      e2_user_secret, e2_smp_inv, e2_smp_abort, e2_smp_2_1,
      e2_smp_2_2, e3_user_secret, e3_smp_inv, e3_smp_abort,
      e3_smp_3_1, e3_smp_3_2, e3_smp_3_3, e4_user_secret,
@@ -344,13 +344,20 @@ user_start_2(_Config) ->
     {error, smp_underway} = otr_smp_fsm:user_start(smp1,
 						   <<"the secret">>).
 
+user_start_3(_Config) ->
+    ct:comment("user requests to begin SMP (Question/Answer "
+	       "instead of Shared Secret"),
+    {ok, {emit, [{smp_msg_1q, _, _}]}} =
+	otr_smp_fsm:user_start(smp1, <<"the question">>,
+			       <<"the answer">>).
+
 %}}}F
 
 %F{{{ internal functions
 
 start_smp_fsm(Config) ->
-    {ok, Smp1} = otr_smp_fsm:start_link(<<1:160>>,
-					<<2:160>>, <<3:64>>),
+    {ok, Smp1} = otr_smp_fsm:start_link(<<2:160>>,
+					<<1:160>>, <<3:64>>),
     {ok, Smp2} = otr_smp_fsm:start_link(<<1:160>>,
 					<<2:160>>, <<3:64>>),
     register(smp1, Smp1),

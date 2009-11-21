@@ -29,22 +29,26 @@
 
 % api
 -export([smp_msg/2, start_link/3, user_abort/1,
-	 user_secret/2, user_start/2]).
+	 user_secret/2, user_start/2, user_start/3]).
 
 -record(s,
-	{initiator_fp, responder_fp, session_id, x, a2, a3, g2,
-	 g3, b2, b3, pb, qb, g3a, g3b, pab, qab, ra}).
+	{our_fp, their_fp, session_id, x, a2, a3, g2, g3, b2,
+	 b3, pb, qb, g3a, g3b, pab, qab, ra}).
 
-start_link(InitiatorFP, ResponderFP, SessionID) ->
-    gen_fsm:start_link(?MODULE,
-		       [InitiatorFP, ResponderFP, SessionID], []).
+start_link(OurFP, TheirFP, SessionID) ->
+    gen_fsm:start_link(?MODULE, [OurFP, TheirFP, SessionID],
+		       []).
 
 user_abort(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, user_abort).
 
-user_start(Pid, UserInput) ->
+user_start(Pid, UserSecret) ->
     gen_fsm:sync_send_all_state_event(Pid,
-				      {user_start, UserInput}).
+				      {user_start, {[], UserSecret}}).
+
+user_start(Pid, UserQuestion, UserSecret) ->
+    gen_fsm:sync_send_all_state_event(Pid,
+				      {user_start, {UserQuestion, UserSecret}}).
 
 user_secret(Pid, UserInput) ->
     gen_fsm:sync_send_event(Pid, {user_secret, UserInput}).
@@ -90,7 +94,7 @@ wait_user_secret({smp_msg, _}, _From, State) ->
     do_abort({error, unexpected_smp_msg}, State);
 wait_user_secret({user_secret, UserInput}, _From,
 		 #s{b2 = B2, b3 = B3, g2 = G2, g3 = G3} = State) ->
-    Y = compute_x(State, UserInput),
+    Y = compute_y(State, UserInput),
     G2B = mod_exp(2, B2),
     G3B = mod_exp(2, B3),
     {C2, D2} = proof_knowledge(2, B2, 3),
@@ -217,10 +221,10 @@ expect4({smp_msg, _}, _From, State) ->
 
 %F{{{ gen_fsm callbacks
 
-init([InitiatorFP, ResponderFP, SessionID]) ->
+init([OurFP, TheirFP, SessionID]) ->
     {ok, expect1,
-     #s{initiator_fp = InitiatorFP,
-	responder_fp = ResponderFP, session_id = SessionID}}.
+     #s{our_fp = OurFP, their_fp = TheirFP,
+	session_id = SessionID}}.
 
 handle_info(Info, StateName, StateData) ->
     {stop, {StateName, undefined_info, Info}, StateData}.
@@ -228,18 +232,22 @@ handle_info(Info, StateName, StateData) ->
 handle_event(Event, StateName, StateData) ->
     {stop, {StateName, undefined_event, Event}, StateData}.
 
-handle_sync_event({user_start, UserInput}, _From,
-		  expect1, State) ->
-    X = compute_x(State, UserInput),
+handle_sync_event({user_start,
+		   {UserQuestion, UserSecret}},
+		  _From, expect1, State) ->
+    X = compute_x(State, UserSecret),
     A2 = otr_crypto:rand_int(192),
     A3 = otr_crypto:rand_int(192),
     G2A = mod_exp(2, A2),
     G3A = mod_exp(2, A3),
     {C2, D2} = proof_knowledge(2, A2, 1),
     {C3, D3} = proof_knowledge(2, A3, 2),
-    {reply,
-     {ok, {emit, [{smp_msg_1, [G2A, C2, D2, G3A, C3, D3]}]}},
-     expect2, State#s{x = X, a2 = A2, a3 = A3}};
+    M = case UserQuestion of
+	  [] -> {smp_msg_1, [G2A, C2, D2, G3A, C3, D3]};
+	  Q -> {smp_msg_1q, Q, [G2A, C2, D2, G3A, C3, D3]}
+	end,
+    {reply, {ok, {emit, [M]}}, expect2,
+     State#s{x = X, a2 = A2, a3 = A3}};
 handle_sync_event({user_start, _}, _From, StateName,
 		  State) ->
     {reply, {error, smp_underway}, StateName, State};
@@ -263,15 +271,21 @@ do_abort(Reply, State) ->
     {reply, Reply, expect1, cleaned_state(State)}.
 
 cleaned_state(State) ->
-    #s{initiator_fp = State#s.initiator_fp,
-       responder_fp = State#s.responder_fp,
+    #s{our_fp = State#s.our_fp, their_fp = State#s.their_fp,
        session_id = State#s.session_id}.
 
-compute_x(#s{initiator_fp = Ifp, responder_fp = Rfp,
+compute_y(#s{our_fp = Ofp, their_fp = Tfp,
 	     session_id = SId},
 	  UserInput) ->
     do_hash(1,
-	    <<1:8, Ifp/binary, Rfp/binary, SId/binary,
+	    <<Tfp/binary, Ofp/binary, SId/binary,
+	      UserInput/binary>>).
+
+compute_x(#s{our_fp = Ofp, their_fp = Tfp,
+	     session_id = SId},
+	  UserInput) ->
+    do_hash(1,
+	    <<Ofp/binary, Tfp/binary, SId/binary,
 	      UserInput/binary>>).
 
 mod(X) -> otr_crypto:mod(X, ?DH_MODULUS).
