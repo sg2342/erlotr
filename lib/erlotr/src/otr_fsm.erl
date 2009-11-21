@@ -26,8 +26,8 @@
 	{emit_user, emit_net, require_encryption,
 	 whitespace_start_ake, error_start_ake,
 	 max_fragment_size, send_whitespace_tag,
-	 got_plaintext = false, pt = [], ake, ssid, dsa, mcgs,
-	 heartbeat_timeout, last_data_msg, their_dsa_fp,
+	 got_plaintext = false, pt = [], ake, smp, ssid, dsa,
+	 mcgs, heartbeat_timeout, last_data_msg, their_dsa_fp,
 	 min_enc_size}).
 
 start_link(Opts) ->
@@ -83,6 +83,42 @@ plaintext({net, M}, State) ->
 
 encrypted({ake, {encrypted, TheirKM}}, State) ->
     {next_state, encrypted, ake_completed(State, TheirKM)};
+%F{{{ encrypted({smp...
+encrypted({smp, user_abort}, State) ->
+    {ok, {emit, E}} = otr_smp_fsm:user_abort(State#s.smp),
+    {next_state, encrypted,
+     send_data_msg(State, {[], E, 0})};
+encrypted({smp, {user_start, Question, Answer}},
+	  State) ->
+    case otr_smp_fsm:user_start(State#s.smp, list_to_binary(Question),
+				list_to_binary(Answer))
+	of
+      {error, smp_underway} -> {smp, {error, smp_underway}};
+      {ok, {emit, E}} ->
+	  {next_state, encrypted,
+	   send_data_msg(State, {[], E, 0})}
+    end;
+encrypted({smp, {user_start, Secret}}, State) ->
+    case otr_smp_fsm:user_start(State#s.smp, list_to_binary(Secret)) of
+      {error, smp_underway} -> {smp, {error, smp_underway}};
+      {ok, {emit, E}} ->
+	  {next_state, encrypted,
+	   send_data_msg(State, {[], E, 0})}
+    end;
+encrypted({smp, {user_secret, Secret}},
+	  #s{smp = Smp} = State) ->
+    case otr_smp_fsm:user_secret(Smp,
+				 list_to_binary(Secret))
+	of
+      {error, unexpected_user_secret} ->
+	  emit_user(State,
+		    {smp, {error, unexpected_user_secret}}),
+	  {next_state, encrypted, State};
+      {ok, {emit, E}} ->
+	  {next_state, encrypted,
+	   send_data_msg(State, {[], E, 0})}
+    end;
+%}}}F
 %F{{{ encrypted({user
 encrypted({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
@@ -207,6 +243,8 @@ handle_data_message(State, M) ->
 	  {next_state, encrypted, State}
     end.
 
+%F{{{ heartbeat/1
+
 heartbeat(#s{heartbeat_timeout = infinity} = State) ->
     State;
 heartbeat(#s{last_data_msg = undefined} = State) ->
@@ -220,13 +258,23 @@ heartbeat(State) ->
       false -> State
     end.
 
+%}}}F
+
 enter_finished(State) ->
     emit_user(State, {info, finished}),
     unlink(State#s.mcgs),
     exit(State#s.mcgs, shutdown),
+    unlink(State#s.smp),
+    exit(State#s.smp, shutdown),
     {ok, Mcgs} = otr_mcgs:start_link(),
-    {next_state, finished, State#s{mcgs = Mcgs}}.
+    {ok, Smp} = otr_smp_fsm:start_link(),
+    {next_state, finished, State#s{mcgs = Mcgs, smp = Smp}}.
 
+%F{{{ handle_tlv/2
+
+handle_tlv(State, error) ->
+    emit_user(State, {info, error_in_tlv}),
+    {next_state, encrypted, State};
 handle_tlv(State, TLV) ->
     case lists:member(disconnected, TLV) of
       true -> enter_finished(State);
@@ -238,7 +286,38 @@ handle_tlv(State, TLV) ->
 handle_tlv_1({padding, _}) -> false;
 handle_tlv_1(_) -> true.
 
-handle_smp(State, []) -> State. %TODO
+%}}}F
+
+handle_smp(State, []) -> State;
+handle_smp(State, [X | Rest]) ->
+    handle_smp(handle_smp_1(State, X), Rest).
+
+handle_smp_1(#s{smp = Smp} = State,
+	     {smp_msg_1q, Q, V}) ->
+    case otr_smp_fsm:smp_msg(Smp, {smp_msg_1, V}) of
+      {error, Error} ->
+	  emit_user(State, {smp, {error, Error}});
+      {ok, need_user_secret} ->
+	  emit_user(State,
+		    {smp, need_answer_for_question, binary_to_list(Q)})
+    end,
+    State;
+handle_smp_1(#s{smp = Smp} = State, M) ->
+    Emit = case otr_smp_fsm:smp_msg(Smp, M) of
+	     {error, Error} ->
+		 emit_user(State, {smp, {error, Error}}), [];
+	     {ok, need_user_secret} ->
+		 emit_user(State, {smp, need_shared_secret}), [];
+	     {ok, {emit, E}} -> E;
+	     {verification_succeeded, {emit, E}} ->
+		 emit_user(State, {smp, verification_succeeded}), E;
+	     {verification_failed, {emit, E}} ->
+		 emit_user(State, {smp, verification_failed}), E
+	   end,
+    case Emit of
+      [] -> State;
+      G -> send_data_msg(State, {[], G, 0})
+    end.
 
 send_data_msg(#s{min_enc_size = Mes} = State,
 	      {M, TLV, Flags})
@@ -314,7 +393,7 @@ handle_error_message(StateName, State, M) ->
     {next_state, StateName, State}.
 
 ake_completed(#s{mcgs = Mcgs, ake = Ake} = State,
-	      {OurKeyId, OurKey, TheirKeyId, Y, FP, SSID}) ->
+	      {OurKeyId, OurKey, TheirKeyId, TheirY, FP, SSID}) ->
     unlink(Ake),
     exit(Ake, shutdown),
     case State#s.their_dsa_fp of
@@ -327,9 +406,10 @@ ake_completed(#s{mcgs = Mcgs, ake = Ake} = State,
 		    {info, {encrypted_changed_dsa_fp, FP, SSID}})
     end,
     ok = otr_mcgs:set_keys(Mcgs,
-			   {OurKeyId, OurKey, TheirKeyId, Y}),
-    State#s{ake = undefined, ssid = SSID,
-	    their_dsa_fp = FP}.
+			   {OurKeyId, OurKey, TheirKeyId, TheirY}),
+    OurFP = otr_crypto:dsa_fingerprint(State#s.dsa),
+    (init_smp(State, OurFP, FP, SSID))#s{ake = undefined,
+					 ssid = SSID, their_dsa_fp = FP}.
 
 init_ake(#s{ake = undefined, mcgs = Mcgs, dsa = DSA}) ->
     {ok, {KeyId, DhKey}} = otr_mcgs:get_key(Mcgs),
@@ -342,6 +422,19 @@ init_ake(#s{ake = undefined, mcgs = Mcgs, dsa = DSA}) ->
     otr_ake_fsm:start_link(KeyId, DhKey, DSA, EmitToFsm,
 			   EmitToNet);
 init_ake(#s{ake = Ake}) -> {ok, Ake}.
+
+init_smp(#s{smp = undefined} = State, InitiatorFP,
+	 ResponderFP, SessionID) ->
+    {ok, Smp} = otr_smp_fsm:start_link(InitiatorFP,
+				       ResponderFP, SessionID),
+    State#s{smp = Smp};
+init_smp(#s{smp = OldSmp} = State, InitiatorFP,
+	 ResponderFP, SessionID) ->
+    unlink(OldSmp),
+    exit(OldSmp, shutdown),
+    {ok, Smp} = otr_smp_fsm:start_link(InitiatorFP,
+				       ResponderFP, SessionID),
+    State#s{smp = Smp}.
 
 emit_user(#s{emit_user = F, require_encryption = true},
 	  {message, M}) ->

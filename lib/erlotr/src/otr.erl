@@ -13,8 +13,7 @@
 -export([create_context/1, start/0]).
 
 start() ->
-    application:start(crypto),
-    application:start(erlotr).
+    application:start(crypto), application:start(erlotr).
 
 create_context(Opts) ->
     {ok, Supervisor, Parser, Fsm} = otr_ctx_sup:start(Opts),
@@ -28,7 +27,7 @@ create_context(Opts) ->
 			 {user, {message, _}} -> otr_fsm:consume(Fsm, M);
 			 {control, stop} -> otr_ctx_sup:stop(Supervisor);
 			 {net, S} -> otr_parser_fsm:consume(Parser, S);
-			 {smp, _Cmd} -> erlang:error(not_implemented);
+			 {smp, _Cmd} -> otr_fsm:consume(Fsm, M);
 			 _ -> erlang:error({unknown_command, M})
 		       end
 		 end

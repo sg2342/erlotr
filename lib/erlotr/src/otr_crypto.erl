@@ -16,7 +16,7 @@
 
 -export([dh_agree/2, dh_gen_key/0]).
 
--export([dsa_sign/2, dsa_verify/3]).
+-export([dsa_sign/2, dsa_verify/3, dsa_fingerprint/1]).
 
 -export([sha1/1, sha1/3, sha1HMAC/2, sha256/1, sha256/3,
 	 sha256HMAC/2]).
@@ -121,6 +121,12 @@ dsa_verify(_PublicKey = [P, Q, G, Y], Data, {R0, S0}) ->
     T2 = mod_exp(Y, U2, P),
     V = T1 * T2 rem P rem Q,
     V == R0.
+
+dsa_fingerprint([P, Q, G, _, Y]) -> dsa_fingerprint([P, Q, G, Y]);
+dsa_fingerprint([P, Q, G, Y]) ->
+    otr_crypto:sha1(concat_binary([otr_util:mpint(V)
+				     || V <- [P, Q, G, Y]])).
+
 
 %}}}F
 
