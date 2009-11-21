@@ -276,7 +276,7 @@ pack_pubkey([P, Q, G, _, Y]) ->
 
 compute_keys(S) ->
     MpiS = otr_util:mpint(S),
-    SSID = otr_crypto:sha256(<<0, MpiS/binary>>),
+    <<SSID:8/binary, _/binary>> = otr_crypto:sha256(<<0, MpiS/binary>>),
     <<CX:16/binary, CY:16/binary>> = otr_crypto:sha256(<<1,
 							 MpiS/binary>>),
     M1X = otr_crypto:sha256(<<2, MpiS/binary>>),
