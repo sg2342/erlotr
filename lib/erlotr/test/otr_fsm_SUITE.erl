@@ -180,7 +180,9 @@ pt_usr_stop(Config) ->
     ct:comment("stop_otr from user while in state [plaintext]"),
     Fsm = (?config(fsm, Config)),
     otr_fsm:consume(Fsm, {user, stop_otr}),
-    timeout = receive R -> R after 1000 -> timeout end.
+    {to_user, {info, stopped}} = receive
+				   R -> R after 500 -> timeout
+				 end.
 
 pt_net_1(Config) ->
     ct:comment("plaintext message from network while "
@@ -354,6 +356,9 @@ enc_usr_stop(_Config) ->
     otr_fsm:consume(fsm1, {user, start_otr}),
     ok = key_exchange_completed(),
     otr_fsm:consume(fsm1, {user, stop_otr}),
+    {to_user1, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user2, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
@@ -472,7 +477,7 @@ enc_net_unreadable(_Config) ->
     exchange_data(3),
     {ok, M1} = otr_message:parse(M),
     otr_fsm:consume(fsm2, {net, M1}),
-    {to_user2, {error, malforment_encrypted_received}} =
+    {to_user2, {error, malformed_encrypted_received}} =
 	receive X3 -> X3 after 500 -> timeout end,
     {to_user1, {error_net, ?ERR_MSG_MALFORMED}} = receive
 						    X4 -> X4
@@ -490,6 +495,9 @@ fin_usr_start(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
@@ -504,6 +512,9 @@ fin_usr_stop(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
@@ -516,12 +527,15 @@ fin_usr_msg(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
     otr_fsm:consume(fsm1, {user, {message, "FOO"}}),
     {to_user1, {info, message_can_not_be_sent_this_time}} =
-	receive X4 -> X4 after 500 -> timeout end.
+	receive X5 -> X5 after 500 -> timeout end.
 
 fin_net_plain(_Config) ->
     ct:comment("plain message from user while in state "
@@ -530,12 +544,15 @@ fin_net_plain(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
     otr_fsm:consume(fsm2, {user, {message, "FOO"}}),
     {to_user1, {message, "FOO", [warning_unencrypted]}} =
-	receive X4 -> X4 after 500 -> timeout end.
+	receive X5 -> X5 after 500 -> timeout end.
 
 fin_net_error_1(_Config) ->
     ct:comment("error message from network while in "
@@ -544,12 +561,15 @@ fin_net_error_1(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
     otr_parser_fsm:consume(parser1, "?OTR Error:The Error"),
     R = {to_user1, {error_net, "The Error"}},
-    R = receive X4 -> X4 after 500 -> timeout end.
+    R = receive X5 -> X5 after 500 -> timeout end.
 
 fin_net_error_2(_Config) ->
     ct:comment("error message from network while in "
@@ -558,12 +578,15 @@ fin_net_error_2(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
     otr_parser_fsm:consume(parser1, "?OTR Error:The Error"),
     R = {to_user1, {error_net, "The Error"}},
-    R = receive X4 -> X4 after 500 -> timeout end,
+    R = receive X5 -> X5 after 500 -> timeout end,
     ok = key_exchange_2_completed(),
     exchange_data(3).
 
@@ -574,13 +597,16 @@ fin_net_tagged_ws_1(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
     otr_parser_fsm:consume(parser1, "T WS" ++ (?TAG_V2)),
     R = {to_user1,
 	 {message, "T WS", [warning_unencrypted]}},
-    R = receive X4 -> X4 after 500 -> timeout end.
+    R = receive X5 -> X5 after 500 -> timeout end.
 
 fin_net_tagged_ws_2(_Config) ->
     ct:comment("tagged whitespace message from network "
@@ -590,13 +616,16 @@ fin_net_tagged_ws_2(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
     otr_parser_fsm:consume(parser1, "T WS" ++ (?TAG_V2)),
     R = {to_user1,
 	 {message, "T WS", [warning_unencrypted]}},
-    R = receive X4 -> X4 after 500 -> timeout end,
+    R = receive X5 -> X5 after 500 -> timeout end,
     ok = key_exchange_2_completed().
 
 fin_net_data(_Config) ->
@@ -606,15 +635,18 @@ fin_net_data(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
     {M, _} = (?MessageTestVector5),
     otr_parser_fsm:consume(parser1, M),
     {to_user1, {error, unreadable_encrypted_received}} =
-	receive X4 -> X4 after 500 -> timeout end,
+	receive X5 -> X5 after 500 -> timeout end,
     {to_user2, {error_net, ?ERR_MSG_UNEXPECTED}} = receive
-						     X5 -> X5
+						     X6 -> X6
 						     after 500 -> timeout
 						   end.
 
@@ -624,6 +656,9 @@ fin_net_ake(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,
@@ -637,6 +672,9 @@ fin_net_malformed(_Config) ->
     ok = key_exchange_completed(),
     exchange_data(5),
     otr_fsm:consume(fsm2, {user, stop_otr}),
+    {to_user2, {info, stopped}} = receive
+				    X4 -> X4 after 500 -> timeout
+				  end,
     {to_user1, {info, finished}} = receive
 				     X3 -> X3 after 500 -> timeout
 				   end,

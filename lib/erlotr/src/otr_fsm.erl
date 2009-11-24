@@ -49,6 +49,7 @@ plaintext({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
     {next_state, plaintext, State};
 plaintext({user, stop_otr}, State) ->
+    emit_user(State, {info, stopped}),
     {next_state, plaintext, State};
 plaintext({user, {message, M}},
 	  #s{require_encryption = true} = State) ->
@@ -90,17 +91,24 @@ encrypted({smp, user_abort}, State) ->
      send_data_msg(State, {[], E, 0})};
 encrypted({smp, {user_start, Question, Answer}},
 	  State) ->
-    case otr_smp_fsm:user_start(State#s.smp, list_to_binary(Question),
+    case otr_smp_fsm:user_start(State#s.smp,
+				list_to_binary(Question),
 				list_to_binary(Answer))
 	of
-      {error, smp_underway} -> {smp, {error, smp_underway}};
+      {error, smp_underway} ->
+	  emit_user(State, {smp, {error, smp_underway}}),
+	  {next_state, encrypted, State};
       {ok, {emit, E}} ->
 	  {next_state, encrypted,
 	   send_data_msg(State, {[], E, 0})}
     end;
 encrypted({smp, {user_start, Secret}}, State) ->
-    case otr_smp_fsm:user_start(State#s.smp, list_to_binary(Secret)) of
-      {error, smp_underway} -> {smp, {error, smp_underway}};
+    case otr_smp_fsm:user_start(State#s.smp,
+				list_to_binary(Secret))
+	of
+      {error, smp_underway} ->
+	  emit_user(State, {smp, {error, smp_underway}}),
+	  {next_state, encrypted, State};
       {ok, {emit, E}} ->
 	  {next_state, encrypted,
 	   send_data_msg(State, {[], E, 0})}
@@ -124,8 +132,12 @@ encrypted({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
     {next_state, encrypted, State};
 encrypted({user, stop_otr}, State) ->
+    catch unlink(State#s.smp),
+    catch exit(State#s.smp, shutdown),
+    emit_user(State, {info, stopped}),
     {next_state, plaintext,
-     send_data_msg(State, {[], [disconnected], 1})};
+     (send_data_msg(State, {[], [disconnected], 1}))#s{smp =
+							   undefined}};
 encrypted({user, {message, M}}, State) ->
     NState = send_data_msg(State, {M, [], 0}),
     %TODO: store the plaintext for possible retransmission
@@ -154,6 +166,7 @@ finished({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
     {next_state, encrypted, State};
 finished({user, stop_otr}, State) ->
+    emit_user(State, {info, stopped}),
     {next_state, plaintext, State#s{got_plaintext = false}};
 finished({user, {message, M}}, State) ->
     emit_user(State,
@@ -238,7 +251,7 @@ handle_data_message(State, M) ->
 	  {next_state, encrypted, State};
       {rejected, _, _} ->
 	  emit_user(State,
-		    {error, malforment_encrypted_received}),
+		    {error, malformed_encrypted_received}),
 	  emit_net(State, #otr_msg_error{s = ?ERR_MSG_MALFORMED}),
 	  {next_state, encrypted, State}
     end.
@@ -267,8 +280,8 @@ enter_finished(State) ->
     unlink(State#s.smp),
     exit(State#s.smp, shutdown),
     {ok, Mcgs} = otr_mcgs:start_link(),
-    {ok, Smp} = otr_smp_fsm:start_link(),
-    {next_state, finished, State#s{mcgs = Mcgs, smp = Smp}}.
+    {next_state, finished,
+     State#s{mcgs = Mcgs, smp = undefined}}.
 
 %F{{{ handle_tlv/2
 
@@ -298,8 +311,7 @@ handle_smp_1(#s{smp = Smp} = State,
       {error, Error} ->
 	  emit_user(State, {smp, {error, Error}});
       {ok, need_user_secret} ->
-	  emit_user(State,
-		    {smp, need_answer_for_question, binary_to_list(Q)})
+	  emit_user(State, {smp, need_answer_for_question, Q})
     end,
     State;
 handle_smp_1(#s{smp = Smp} = State, M) ->
