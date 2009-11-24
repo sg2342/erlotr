@@ -20,6 +20,7 @@
 
 % api
 -export([start_link/0]).
+
 -export([decrypt/2, encrypt/2, get_key/1, set_keys/2]).
 
 -record(s,
@@ -27,7 +28,8 @@
 	 dmk = [], reveal_macs = <<>>}).
 
 -record(dmk,
-	{rx_ctr = 0, tx_ctr = 0, rx_mac, tx_mac, rx_key, tx_key}).
+	{rx_ctr = 0, tx_ctr = 0, rx_mac, tx_mac, rx_key,
+	 tx_key}).
 
 start_link() -> gen_server:start_link(?MODULE, [], []).
 
@@ -89,8 +91,7 @@ handle_call({encrypt, {M, TLV, Flags}}, _From, State) ->
 					  <<Ctr:64>>, otr_tlv:encode({M, TLV})),
     DM = #otr_msg_data{flags = Flags, sender_keyid = OId,
 		       enc_data = EncD, recipient_keyid = TId,
-		       ctr_init = <<Ctr:64>>,
-		       dhy = element(2, State#s.dh)},
+		       ctr_init = <<Ctr:64>>, dhy = element(2, State#s.dh)},
     Mac = otr_crypto:sha1HMAC(Dmk#dmk.tx_mac,
 			      otr_message:encode_data_for_hmac(DM)),
     {reply,
@@ -106,12 +107,14 @@ handle_call({decrypt,
 			   ctr_init = <<Ctr:64>>, flags = Flags} =
 		 M},
 	    _From, State) ->
-    F = if (Flags == 1) -> ignore_unreadable; true -> Flags end,
+    F = if Flags == 1 -> ignore_unreadable;
+	   true -> Flags
+	end,
     case get_dmk(State, OId, TId) of
       error -> {reply, {rejected, no_keys, F}, State};
       {ok, Dmk} ->
 	  Mac = otr_crypto:sha1HMAC(Dmk#dmk.rx_mac,
-				   otr_message:encode_data_for_hmac(M)),
+				    otr_message:encode_data_for_hmac(M)),
 	  if Mac /= M#otr_msg_data.mac ->
 		 {reply, {rejected, mac_missmatch, F}, State};
 	     Ctr =< Dmk#dmk.rx_ctr ->
@@ -207,18 +210,13 @@ get_dh_keys(#s{their_id = T, our_id = O} = State, O,
 get_dh_keys(#s{their_id = T, our_id = O} = State, OO, T)
     when OO == O - 1 ->
     {ok, State#s.previous_dh, State#s.y};
-% TODO: about the follwoing 2 cases: 
-%       i'm not sure if the protocoll even allows to reach a
-%       state where these keys might be requested...
-%       but since we have them...
 get_dh_keys(#s{their_id = T, our_id = O} = State, O, TT)
-    when (TT == T - 1) and State#s.previous_y /=
-	   undefined ->
+    when TT == T - 1, State#s.previous_y /= undefined ->
     {ok, State#s.dh, State#s.previous_y};
 get_dh_keys(#s{their_id = T, our_id = O} = State, OO,
 	    TT)
-    when (TT == T - 1) and (State#s.previous_y /= undefined)
-	   and (OO == O - 1) ->
+    when TT == T - 1, State#s.previous_y /= undefined,
+	 OO == O - 1 ->
     {ok, State#s.previous_dh, State#s.previous_y};
 get_dh_keys(_, _, _) -> error.
 
