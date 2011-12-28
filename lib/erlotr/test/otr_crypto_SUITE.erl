@@ -43,7 +43,7 @@ all() ->
      sha256HMAC_2, sha256HMAC_3, dsa_verify_1, dsa_verify_2,
      dsa_sign_1, dsa_sign_2, dh_key_exchange].
 
-%F{{{ aes_ctr_128_...
+
 
 aes_ctr_128_1(_Config) ->
     ct:comment("AES testvector #1 (16 bytes plaintext)"),
@@ -99,9 +99,9 @@ aes_ctr_128_6(_Config) ->
 					       Ciphertext),
     ok.
 
-%}}}F
 
-%F{{{ sha1...
+
+
 
 sha1_1(_Config) ->
     ct:comment("SHA1 testvector #1 (61 bytes message)"),
@@ -122,9 +122,9 @@ sha1_3(_Config) ->
     MD = otr_crypto:sha1(Msg, Offset, Length),
     ok.
 
-%}}}F
 
-%F{{{ sha256...
+
+
 
 sha256_1(_Config) ->
     ct:comment("SHA256 testvector #1 ( 35 bytes message)"),
@@ -145,9 +145,9 @@ sha256_3(_Config) ->
     MD = otr_crypto:sha256(Msg, Offset, Length),
     ok.
 
-%}}}F
 
-%F{{{ ...HMAC...
+
+
 sha1HMAC_1(_Config) ->
     ct:comment("Sha1HMAC testvector #1 (Klen = 8, Tlen "
 	       "= 10)"),
@@ -202,9 +202,9 @@ sha256HMAC_3(_Config) ->
 	otr_crypto:sha256HMAC(Key, Data),
     ok.
 
-%}}}F
 
-%F{{{  dsa...
+
+
 dsa_verify_1(_Config) ->
     ct:comment("DSA Verify testvector #1"),
     {[P, Q, G, _, Y], Data, Signature, Result} =
@@ -237,14 +237,14 @@ dsa_sign_2(_Config) ->
     true = otr_crypto:dsa_verify([P, Q, G, Y], Data,
 				 {R, S}).
 
-%}}}F
 
-%F{{{ dh_key_exchange
+
+
 dh_key_exchange(_Config) ->
     ct:comment("Diffie Hellman key exchange"),
     {PrivAlice, PubAlice} = otr_crypto:dh_gen_key(),
     {PrivBob, PubBob} = otr_crypto:dh_gen_key(),
     SharedSecret = otr_crypto:dh_agree(PrivAlice, PubBob),
     SharedSecret = otr_crypto:dh_agree(PrivBob, PubAlice),
-    ok.%}}}F
+    ok.
 
