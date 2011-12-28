@@ -23,7 +23,7 @@ decode(Bin) ->
     {MessagePart, TLVPart} = split_parts(Bin),
     {MessagePart, dec_tlv(TLVPart, [])}.
 
-%F{{{ internal functions
+
 encode_tlvs([], Acc) -> Acc;
 encode_tlvs([{padding, I} | Rest], Acc)
     when is_integer(I) ->
@@ -112,5 +112,5 @@ split_parts(Bin) ->
 	   list_to_binary(string:substr(Message, X + 1))}
     end.
 
-%}}}F
+
 

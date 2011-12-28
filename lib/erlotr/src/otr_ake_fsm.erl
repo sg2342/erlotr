@@ -36,13 +36,13 @@ start_link(KeyId, DhKey, DsaKey, EmitToFsm,
 
 consume(Pid, M) -> gen_fsm:send_event(Pid, M).
 
-%F{{{ states
 
-%F{{{ none/2
+
+
 none({cmd, start}, State) -> send_dh_commit(State);
 none(#otr_msg_dh_commit{} = M, State) ->
     process_dh_commit(State, M);
-%F{{{ none/2 ignored messages
+
 none(#otr_msg_dh_key{}, State) ->
     {next_state, none, State};
 none(#otr_msg_reveal_signature{}, State) ->
@@ -50,9 +50,9 @@ none(#otr_msg_reveal_signature{}, State) ->
 none(#otr_msg_signature{}, State) ->
     {next_state, none, State}.
 
-%}}}F %}}}F
+ 
 
-%F{{{ awaiting_dhkey/2
+
 awaiting_dhkey({cmd, start}, State) ->
     send_dh_commit(prune_state(State));
 awaiting_dhkey(#otr_msg_dh_commit{hash_gx = HashGx1},
@@ -80,13 +80,13 @@ awaiting_dhkey(#otr_msg_dh_key{} = M, State) ->
     {next_state, awaiting_sig,
      State#s{msg_reveal_sig = MsgRevealSig, cm1m2 = CM1M2,
 	     msg_dh_commit = undefined, dh_pubkey = Gy}};
-%F{{{ awaiting_dhkey/2 ignored messages
+
 awaiting_dhkey(#otr_msg_reveal_signature{}, State) ->
     {next_state, awaiting_dhkey, State};
 awaiting_dhkey(#otr_msg_signature{}, State) ->
-    {next_state, awaiting_dhkey, State}.%}}}F%}}}F
+    {next_state, awaiting_dhkey, State}.
 
-%F{{{ awaiting_revealsig/2
+
 awaiting_revealsig({cmd, start}, State) ->
     send_dh_commit(prune_state(State));
 awaiting_revealsig(#otr_msg_dh_commit{} = M, State) ->
@@ -127,15 +127,15 @@ awaiting_revealsig(#otr_msg_reveal_signature{} = M,
 		{next_state, none, prune_state(State)}
 	  end
     end;
-%F{{{ awaiting_revealsig/2 ignored message
+
 awaiting_revealsig(#otr_msg_dh_key{}, State) ->
     {next_state, awaiting_revealsig, State};
 awaiting_revealsig(#otr_msg_signature{}, State) ->
     {next_state, awaiting_revealsig, State}.
 
-%}}}F%}}}F
 
-%F{{{ awaiting_sig/2
+
+
 awaiting_sig({cmd, start}, State) ->
     send_dh_commit(prune_state(State));
 awaiting_sig(#otr_msg_dh_commit{} = M, State) ->
@@ -160,15 +160,15 @@ awaiting_sig(#otr_msg_signature{} = M, State) ->
 		     SSID}}),
 	  {next_state, none, prune_state(State)}
     end;
-%F{{{ awaiting_sig/2 ignored messages
+
 awaiting_sig(#otr_msg_dh_key{}, State) ->
     {next_state, awaiting_sig, State};
 awaiting_sig(#otr_msg_reveal_signature{}, State) ->
-    {next_state, awaiting_sig, State}.%}}}F%}}}F
+    {next_state, awaiting_sig, State}.
 
-%}}}F
 
-%F{{{ gen_fsm callbacks
+
+
 
 init([KeyId, DhKey, DsaKey, EmitToFsm, EmitToNet]) ->
     {ok, none,
@@ -190,9 +190,9 @@ terminate(_Reason, _StateName, _State) -> ok.
 code_change(_OldVsn, StateName, StateData, _Extra) ->
     {ok, StateName, StateData}.
 
-%}}}F
 
-%F{{{ internal functions
+
+
 
 send_dh_commit(State) ->
     R = otr_crypto:rand_bytes(16),
@@ -301,5 +301,5 @@ emit_net(#s{emit_net = EmitNet}, M) -> EmitNet(M).
 
 emit_fsm(#s{emit_fsm = EmitFsm}, M) -> EmitFsm(M).
 
-%}}}F
+
 

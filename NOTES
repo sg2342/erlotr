@@ -16,7 +16,3 @@ get [P, Q, G, X, Y] from an SSH private key file:
    {ok, [P,Q,G,X,Y]}.
 
 ----------------------------------------------------------------------------
-
-vim : set foldmark=F{{{,}}}F
-
-

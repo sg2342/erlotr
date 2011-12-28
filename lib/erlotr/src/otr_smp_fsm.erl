@@ -56,9 +56,9 @@ user_secret(Pid, UserInput) ->
 smp_msg(Pid, M) ->
     gen_fsm:sync_send_event(Pid, {smp_msg, M}).
 
-%F{{{ states
 
-%F{{{ expect1/3
+
+
 expect1({smp_msg,
 	 {smp_msg_1, [G2A, C2, D2, G3A, C3, D3]}},
 	_From, State)
@@ -84,9 +84,9 @@ expect1({smp_msg, smp_abort}, _From, State) ->
 expect1({smp_msg, _}, _From, State) ->
     do_abort({error, unexpected_smp_msg}, State).
 
-%}}}F
 
-%F{{{ wait_user_secret/3
+
+
 
 wait_user_secret({smp_msg, smp_abort}, _From, State) ->
     do_abort({error, net_aborted}, State);
@@ -110,9 +110,9 @@ wait_user_secret({user_secret, UserInput}, _From,
 	 [G2B, C2, D2, G3B, C3, D3, Pb, Qb, Cp, D5, D6]}]}},
      expect3, State#s{pb = Pb, qb = Qb}}.
 
-%}}}F
 
-%F{{{ expect2
+
+
 expect2({smp_msg,
 	 {smp_msg_2,
 	  [G2B, C2, D2, G3B, C3, D3, Pb, Qb, Cpin, D5in, D6in]}},
@@ -152,9 +152,9 @@ expect2({smp_msg, smp_abort}, _From, State) ->
 expect2({smp_msg, _}, _From, State) ->
     do_abort({error, unexpected_smp_msg}, State).
 
-%}}}F
 
-%F{{{ expect3
+
+
 expect3({smp_msg,
 	 {smp_msg_3, [Pa, Qa, Cp, D5, D6, Ra, Crin, D7in]}},
 	_From,
@@ -189,9 +189,9 @@ expect3({smp_msg, smp_abort}, _From, State) ->
 expect3({smp_msg, _}, _From, State) ->
     do_abort({error, unexpected_smp_msg}, State).
 
-%}}}F
 
-%F{{{ expect4
+
+
 expect4({smp_msg, {smp_msg_4, [Rb, Cr, D7]}}, _From,
 	#s{g3b = G3b, pab = Pab, qab = Qab, a3 = A3} = State)
     when ?CG(Rb), ?CO(D7) ->
@@ -215,11 +215,11 @@ expect4({smp_msg, smp_abort}, _From, State) ->
 expect4({smp_msg, _}, _From, State) ->
     do_abort({error, unexpected_smp_msg}, State).
 
-%}}}F
 
-%}}}F
 
-%F{{{ gen_fsm callbacks
+
+
+
 
 init([OurFP, TheirFP, SessionID]) ->
     {ok, expect1,
@@ -260,9 +260,9 @@ terminate(_Reason, _StateName, _State) -> ok.
 code_change(_OldVsn, StateName, StateData, _Extra) ->
     {ok, StateName, StateData}.
 
-%}}}F
 
-%F{{{ internal functions
+
+
 
 do_abort(State) ->
     do_abort({ok, {emit, [smp_abort]}}, State).
@@ -343,5 +343,5 @@ check_eq_logs(C, D, Qab, R, G1, G3o, V) ->
     Tmp2 = mod(mod_exp(Qab, D) * mod_exp(R, C)),
     C == hash_int(V, Tmp1, Tmp2).
 
-%}}}F
+
 

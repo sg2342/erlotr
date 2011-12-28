@@ -12,14 +12,14 @@
 
 -include("otr_internal.hrl").
 
-%F{{{ constants
+
 -define(TAG_V1_or_V2,
 	" \t  \t\t\t\t \t \t \t   \t \t  \t  "
 	" \t\t  \t ").
 
 -define(TAG_V2, " \t  \t\t\t\t \t \t \t    \t\t  \t ").
 
-%}}}F
+
 
 -export([encode/1, encode/2, parse/1]).
 
@@ -38,7 +38,7 @@ parse(M) when is_list(M) ->
     end.
 
 
-%F{{{ encode code
+
 do_encode({plain, M}) -> {ok, M};
 do_encode(otr_msg_query) -> {ok, "?OTRv2?"};
 do_encode(#otr_msg_tagged_ws{s = S}) ->
@@ -78,9 +78,9 @@ encode_data_for_hmac(#otr_msg_data{flags = Flags,
 do_encode_bin(Bin) ->
     {ok, "?OTR:" ++ base64:encode_to_string(Bin) ++ "."}.
 
-%}}}F
 
-%F{{{ fragment encode code
+
+
 
 do_fragment(S, MaxFragmentSize)
     when length(S) =< MaxFragmentSize ->
@@ -104,9 +104,9 @@ fragment_header(K, N) ->
     "?OTR," ++
       integer_to_list(K) ++ "," ++ integer_to_list(N) ++ ",".
 
-%}}}F
 
-%F{{{ parse code
+
+
 get_parsefun_and_params(M) ->
     L = [{"?OTR,", fun parse_fragment_m/3},
 	 {"?OTR:", fun parse_encoded_m/3},
@@ -208,5 +208,5 @@ parse_encoded_bin(<<2:16, (?TYPE_DATA), Flags:8,
      #otr_msg_data{flags = Flags, sender_keyid = SenderKeyId,
 		   recipient_keyid = RecipientKeyId, dhy = Dhy,
 		   ctr_init = Ctr, enc_data = Data, mac = Mac,
-		   old_mac_keys = OldMacKeys}}.%}}}F
+		   old_mac_keys = OldMacKeys}}.
 

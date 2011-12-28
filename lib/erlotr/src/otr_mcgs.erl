@@ -46,7 +46,7 @@ set_keys(Pid, M) -> gen_server:call(Pid, {set_keys, M}).
 
 get_key(Pid) -> gen_server:call(Pid, get_key).
 
-%F{{{ gen_server callbacks
+
 init([]) ->
     {ok,
      #s{dh = otr_crypto:dh_gen_key(),
@@ -146,9 +146,9 @@ terminate(_Reason, _State) -> ok.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
-%}}}F
 
-%F{{{ internal functions
+
+
 
 rotate_keys(State, OId, TId, Y) ->
     rotate_their_keys(rotate_our_keys(State, OId), TId, Y).
@@ -220,5 +220,5 @@ get_dh_keys(#s{their_id = T, our_id = O} = State, OO,
     {ok, State#s.previous_dh, State#s.previous_y};
 get_dh_keys(_, _, _) -> error.
 
-%}}}F
+
 
