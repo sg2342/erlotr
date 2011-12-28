@@ -1,0 +1,2 @@
+{'src/*', [warn_missing_spec, debug_info, bin_opt_info,
+           {outdir, "ebin/"}, {hipe, [o2, verbose]}]}.

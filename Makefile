@@ -1,52 +1,21 @@
-ERL_BASE=/usr/local/lib/erlang
-RUN_TEST=${ERL_BASE}/lib/common_test-1.4.5/priv/bin/run_test
-ERL=${ERL_BASE}/bin/erl
+all: build
 
-ERL_PA=-pa ${PWD}/lib/*/ebin
+build: erlotr_build
 
-TEST_SPEC?=test.spec
+clean: erlotr_clean
 
-APPLICATIONS=erlotr
+ct_test: erlotr_ct_test
 
-all: test
+dialyzer: erlotr_dialyzer
 
-ebin_subdirs:
-	for A in ${APPLICATIONS} ; do mkdir -p lib/$$A/ebin; done
+erlotr_build:
+	${MAKE} -C lib/erlotr build
 
-build: ebin_subdirs applications
-	${ERL} ${ERL_PA} -make
+erlotr_clean:
+	${MAKE} -C lib/erlotr clean
 
-shell:
-	${ERL} ${ERL_PA}
+erlotr_ct_test:
+	${MAKE} -C lib/erlotr ct_test
 
-
-clean:
-	for A in ${APPLICATIONS} ; \
-	    do \
-	    rm -rf lib/$$A/ebin; \
-	    rm -f lib/$$A/test/*.beam; \
-	    done
-
-shiny: clean
-	rm -rf log 
-
-logdir:
-	mkdir -p log
-	cat /dev/null > log/cover.db
-
-applications:
-	for A in ${APPLICATIONS} ; do \
-		V=`VSNF=lib/$$A/src/vsn;\
-		    [ -e $$VSNF ] \
-			&& cat $$VSNF \
-			|| echo -n  0.0 `; \
-		[ -e lib/$$A/src/$$A.app.src ] \
-		    && cat lib/$$A/src/$$A.app.src | \
-			sed -e"s,%VSN%,$$V," > lib/$$A/ebin/$$A.app \
-		    || true ;\
-	done
-
-test: logdir build ${TEST_SPEC}
-	ERL_LIBS="${ERL_LIBS}:`pwd`/lib" \
-	erl -sname otr_test -spec ${TEST_SPEC} -logdir ${PWD}/log \
-	-cover cover.spec -s ct_run script_start -s erlang halt
+erlotr_dialyzer:
+	${MAKE} -C lib/erlotr dialyzer
