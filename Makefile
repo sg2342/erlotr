@@ -28,7 +28,6 @@ clean:
 	    done
 
 shiny: clean
-	rm -f test.spec
 	rm -rf log 
 
 logdir:
@@ -47,10 +46,7 @@ applications:
 		    || true ;\
 	done
 
-
-test.spec: test.spec.in
-	cat test.spec.in | sed s%@PATH@%${PWD}% > test.spec
-
 test: logdir build ${TEST_SPEC}
-	${RUN_TEST} ${ERL_PA} -spec ${TEST_SPEC} -logdir ${PWD}/log -cover cover.spec -include ${PWD}/"lib/erlotr/src"
-
+	ERL_LIBS="${ERL_LIBS}:`pwd`/lib" \
+	erl -sname otr_test -spec ${TEST_SPEC} -logdir ${PWD}/log \
+	-cover cover.spec -s ct_run script_start -s erlang halt

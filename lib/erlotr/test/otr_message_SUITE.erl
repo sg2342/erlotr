@@ -4,7 +4,7 @@
 
 -compile(export_all).
 
--include("otr_internal.hrl").
+-include("../src/otr_internal.hrl").
 
 -include("MessageTestVectors.hrl").
 
