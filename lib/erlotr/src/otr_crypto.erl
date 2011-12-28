@@ -25,7 +25,7 @@
 
 -export([rand_bytes/1, rand_int/1]).
 
-%F{{{ ...HMAC...
+
 sha1HMAC(Key, Data) -> crypto:sha_mac(Key, Data).
 
 sha256HMAC(Key, Data) when size(Key) > 64 ->
@@ -40,9 +40,9 @@ sha256HMAC(Key, Data) ->
     KxorOpad = list_to_binary([V bxor 92
 			       || V <- binary_to_list(Key)]),
     H1 = sha256(<<KxorIpad/binary, Data/binary>>),
-    sha256(<<KxorOpad/binary, H1/binary>>).%}}}F
+    sha256(<<KxorOpad/binary, H1/binary>>).
 
-%F{{{ sha1...
+
 sha1(Data) -> crypto:sha(Data).
 
 sha1(Data, Offset, Length)
@@ -50,9 +50,9 @@ sha1(Data, Offset, Length)
 	 size(Data) - (Offset + Length) > 0 ->
     <<_:Offset/binary, Part:Length/binary, _/binary>> =
 	Data,
-    crypto:sha(Part).%}}}F
+    crypto:sha(Part).
 
-%F{{{ sha1...
+
 sha256(Data) -> crypto:sha256(Data).
 
 sha256(Data, Offset, Length)
@@ -60,9 +60,9 @@ sha256(Data, Offset, Length)
 	 size(Data) - (Offset + Length) > 0 ->
     <<_:Offset/binary, Part:Length/binary, _/binary>> =
 	Data,
-    crypto:sha256(Part).%}}}F
+    crypto:sha256(Part).
 
-%F{{{ aes_ctr_128 ...
+
 aes_ctr_128_decrypt(Key, Nonce, Data) ->
     aes_ctr_128_encrypt(Key, Nonce, Data).
 
@@ -94,9 +94,9 @@ do_aes_ctr_128(Key, {Nonce, Counter}, Plaintext,
     do_aes_ctr_128(Key, {Nonce, Counter + 1}, Tail,
 		   <<Ciphertext/binary, CtBlock/binary>>).
 
-%}}}F
 
-%F{{{ dsa_sign, dsa_verify
+
+
 %
 % stolen from ssh-1.1.6/src/ssh_dsa.erl
 
@@ -128,9 +128,9 @@ dsa_fingerprint([P, Q, G, Y]) ->
 				     || V <- [P, Q, G, Y]])).
 
 
-%}}}F
 
-%F{{{ dh_gen_key/0, dh_agree/2
+
+
 
 dh_gen_key() ->
     P = (?DH_MODULUS),
@@ -145,7 +145,7 @@ dh_gen_key() ->
 dh_agree(Private, PeerPub) ->
     mod_exp(PeerPub, Private, ?DH_MODULUS).
 
-%}}}F
+
 
 mod(X, P) when X >= 0 -> X rem P;
 mod(X, P) when X < 0 -> P + X rem P.

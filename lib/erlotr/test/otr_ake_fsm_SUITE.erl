@@ -47,7 +47,7 @@ all() ->
      awaiting_sig_sig2, awaiting_sig_sig3, complete_ake,
      cover].
 
-%F{{{ init_per_testcase/2
+
 
 init_per_testcase(awaiting_sig_start, Config) ->
     setup_2ake(Config, []);
@@ -72,9 +72,9 @@ init_per_testcase(awaiting_revealsig_revealsig_3,
 init_per_testcase(complete_ake, Config) ->
     setup_2ake(Config, []);
 init_per_testcase(_TestCase, Config) ->
-    setup_ake(Config, []).%}}}F
+    setup_ake(Config, []).
 
-%F{{{ end_per_testcase/2
+
 end_per_testcase(_TestCase, Config) ->
     F = fun (X) ->
 		case ?config(X, Config) of
@@ -86,11 +86,11 @@ end_per_testcase(_TestCase, Config) ->
 		end
 	end,
     lists:foreach(F, [ake, ake1, ake2]),
-    Config.%}}}F
+    Config.
 
-%F{{{ testcases
 
-%F{{{ none_...
+
+
 none_start(Config) ->
     ct:comment("process start command while in state "
 	       "[none]"),
@@ -120,9 +120,9 @@ none_ignored(Config) ->
     otr_ake_fsm:consume(Ake, #otr_msg_signature{}),
     ok = receive _ -> notok after 500 -> ok end.
 
-%}}}F
 
-%F{{{ awaiting_dhkey_...
+
+
 awaiting_dhkey_start(Config) ->
     ct:comment("process start command while in state "
 	       "[awaiting_dhkey]"),
@@ -222,9 +222,9 @@ awaiting_dhkey_ignored(Config) ->
     otr_ake_fsm:consume(Ake, #otr_msg_signature{}),
     ok = receive _ -> notok after 500 -> ok end.
 
-%}}}F
 
-%F{{{ awaiting_revealsig_...
+
+
 awaiting_revealsig_start(Config) ->
     ct:comment("process start command while in state "
 	       "[awaiting_revealsig]"),
@@ -321,9 +321,9 @@ awaiting_revealsig_ignored(Config) ->
     otr_ake_fsm:consume(Ake, #otr_msg_signature{}),
     ok = receive _ -> notok after 500 -> ok end.
 
-%}}}F
 
-%F{{{ awaiting_sig
+
+
 awaiting_sig_start(Config) ->
     ct:comment("process start command while in state "
 	       "[awaiting_sig]"),
@@ -528,7 +528,7 @@ awaiting_sig_sig3(Config) ->
 						     mac = Mac}),
     ok = receive _ -> notok after 500 -> ok end.
 
-    %}}}F
+    
 
 complete_ake(Config) ->
     ct:comment("complete Authenticated Key Exchange"),
@@ -587,9 +587,9 @@ cover(_Config) ->
 	otr_ake_fsm:handle_sync_event(a, b, c, d),
     ok.
 
-%}}}F
 
-%F{{{ internal functions
+
+
 setup_2ake(Config, _Opts) ->
     Self = self(),
     PubKeyFp = fun ([P, Q, G, _, Y]) ->
@@ -627,5 +627,5 @@ setup_ake(Config, _Opts) ->
     EmitNet = fun (X) -> Self ! {to_net, X} end,
     {ok, Ake} = otr_ake_fsm:start_link(KeyId, DhKey, DsaKey,
 				       EmitFsm, EmitNet),
-    [{ake, Ake} | Config].%}}}F
+    [{ake, Ake} | Config].
 

@@ -39,7 +39,7 @@ init_per_testcase(_TestCase, Config) ->
 end_per_testcase(_TestCase, Config) ->
     stop_smp_fsm(Config).
 
-%F{{{ e1_.../1
+
 e1_user_secret(_Config) ->
     ct:comment("user supplied secret while in state "
 	       "[expect1]"),
@@ -71,9 +71,9 @@ e1_smp_1_2(_Config) ->
     {smp_msg_1, [GA2, C2, D2, GS3, C3, D3]} = M,
     N = {smp_msg_1, [GA2, C2, D2, GS3, C3, D3 + 1]},
     {error, proof_checking_failed} =
-	otr_smp_fsm:smp_msg(smp2, N).%}}}F
+	otr_smp_fsm:smp_msg(smp2, N).
 
-%F{{{ wus_.../1
+
 
 wus_smp_abort(_Config) ->
     ct:comment("smp_abort from net while in state [wait_user_"
@@ -102,9 +102,9 @@ wus_user_secret(_Config) ->
     {ok, {emit, [{smp_msg_2, _}]}} =
 	otr_smp_fsm:user_secret(smp1, <<"s">>).
 
-%}}}F
 
-%F{{{ e2_.../1
+
+
 e2_user_secret(_Config) ->
     ct:comment("user supplied secret while in state "
 	       "[expect2]"),
@@ -151,9 +151,9 @@ e2_smp_2_2(_Config) ->
 	otr_smp_fsm:smp_msg(smp1,
 			    {smp_msg_2, [A, B, C, D, E, F, G, H, I, J, K - 1]}).
 
-%}}}F
 
-%F{{{ e3_..../1
+
+
 e3_user_secret(_Config) ->
     ct:comment("user supplied secret while in state "
 	       "[expect3]"),
@@ -227,9 +227,9 @@ e3_smp_3_3(_Config) ->
     {error, proof_checking_failed} =
 	otr_smp_fsm:smp_msg(smp2, N).
 
-%}}}F
 
-%F{{{ e4_..../1
+
+
 
 e4_user_secret(_Config) ->
     ct:comment("user supplied secret while in state "
@@ -310,9 +310,9 @@ e4_smp_4_3(_Config) ->
     {error, proof_checking_failed} =
 	otr_smp_fsm:smp_msg(smp1, N).
 
-%}}}F
 
-%F{{{
+
+
 
 cover(_Config) ->
     ct:comment("achive 100% coverage: call code_change/4, "
@@ -351,9 +351,9 @@ user_start_3(_Config) ->
 	otr_smp_fsm:user_start(smp1, <<"the question">>,
 			       <<"the answer">>).
 
-%}}}F
 
-%F{{{ internal functions
+
+
 
 start_smp_fsm(Config) ->
     {ok, Smp1} = otr_smp_fsm:start_link(<<2:160>>,
@@ -372,5 +372,5 @@ stop_smp_fsm(Config) ->
 		  [smp1, smp2]),
     Config.
 
-%}}}F
+
 

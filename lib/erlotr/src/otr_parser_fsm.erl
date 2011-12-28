@@ -32,7 +32,7 @@ set_emit_fun(Pid, Emit) ->
 
 consume(Pid, M) -> gen_fsm:send_event(Pid, M).
 
-%F{{{ fsm states
+
 idle(Message, State) ->
     case parse_emit(Message, State#s.emit) of
       #otr_msg_fragment{k = 1, n = N} = F when N > 1 ->
@@ -60,9 +60,9 @@ need_more_fragments(Message, State) ->
       _ -> {next_state, idle, State#s{frag = undefined}}
     end.
 
-%}}}F
 
-%F{{{ gen_fsm callbacks
+
+
 
 init([]) -> {ok, wait_emit_fun, #s{}}.
 
@@ -84,9 +84,9 @@ terminate(_Reason, _StateName, _State) -> ok.
 code_change(_OldVsn, StateName, StateData, _Extra) ->
     {ok, StateName, StateData}.
 
-%}}}F
 
-%F{{{ internal functions
+
+
 
 parse_emit_fragmented(Message, Emit) ->
     case otr_message:parse(Message) of
@@ -104,6 +104,3 @@ parse_emit(Message, Emit) ->
       {ok, OtrMsg} -> Emit(OtrMsg);
       {error, E} -> Emit({error, E})
     end.
-
-%}}}
-

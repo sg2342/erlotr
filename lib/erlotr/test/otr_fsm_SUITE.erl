@@ -48,7 +48,7 @@ all() ->
      fragmented, padded, fin_net_malformed, heartbeat,
      cover].
 
-%F{{{ init_per_testcase/2
+
 init_per_testcase(pt_usr_2, Config) ->
     setup_fsm(Config, [send_whitespace_tag]);
 init_per_testcase(pt_net_error_2, Config) ->
@@ -120,9 +120,9 @@ init_per_testcase(heartbeat, Config) ->
 init_per_testcase(_TestCase, Config) ->
     setup_fsm(Config, []).
 
-%}}}F
 
-%F{{{ end_per_testcase/2
+
+
 end_per_testcase(_TestCase, Config) ->
     lists:foreach(fun (X) ->
 			  catch unlink(whereis(X)),
@@ -143,9 +143,9 @@ end_per_testcase(_TestCase, Config) ->
 	  catch exit(Parser, shutdown),
 	  false = is_process_alive(Parser)
     end,
-    Config.%}}}F
+    Config.
 
-%F{{{ pt_.../1
+
 pt_usr_1(Config) ->
     ct:comment("message from user while in state [plaintext]"),
     Fsm = (?config(fsm, Config)),
@@ -332,9 +332,9 @@ pt_ake_msg_2(_Config) ->
 				  end,
     ok.
 
-%}}}F
 
-%F{{{ enc_.../1
+
+
 enc_usr_start(_Config) ->
     ct:comment("start otr command while in state [encrypted]"),
     otr_fsm:consume(fsm1, {user, start_otr}),
@@ -486,9 +486,9 @@ enc_net_unreadable(_Config) ->
     exchange_data(3),
     ok.
 
-%}}}F
 
-%F{{{ fin_.../1
+
+
 fin_usr_start(_Config) ->
     ct:comment("start otr command while in state [finished]"),
     otr_fsm:consume(fsm1, {user, start_otr}),
@@ -682,7 +682,7 @@ fin_net_malformed(_Config) ->
     R = {to_user1, {error, malformed_message_received}},
     R = receive R -> R after 500 -> timeout end.
 
-%}}}F
+
 
 fragmented(_Config) ->
     ct:comment("ake, transmit/receive fragmented message"),
@@ -745,7 +745,7 @@ cover(_Config) ->
 	otr_fsm:handle_sync_event(a, b, c, d),
     ok.
 
-%F{{{ internal functions
+
 
 exchange_data(0) -> ok;
 exchange_data(N) ->
@@ -857,5 +857,5 @@ setup_fsm(Config, Opts) ->
 				    | Opts]),
     otr_parser_fsm:set_emit_fun(Parser,
 				fun (X) -> otr_fsm:consume(Fsm, {net, X}) end),
-    [{fsm, Fsm}, {parser, Parser} | Config]. %}}}F
+    [{fsm, Fsm}, {parser, Parser} | Config]. 
 

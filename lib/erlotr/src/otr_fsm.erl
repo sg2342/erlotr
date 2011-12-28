@@ -35,7 +35,7 @@ start_link(Opts) ->
 
 consume(Pid, M) -> gen_fsm:send_event(Pid, M).
 
-%F{{{ states
+
 plaintext({ake, {encrypted, TheirKM}},
 	  #s{pt = PT} = State) ->
     NState = ake_completed(State, TheirKM),
@@ -44,7 +44,7 @@ plaintext({ake, {encrypted, TheirKM}},
 		  end,
 		  lists:reverse(PT)),
     {next_state, encrypted, NState#s{pt = []}};
-%F{{{ plaintext({user ....
+
 plaintext({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
     {next_state, plaintext, State};
@@ -61,8 +61,8 @@ plaintext({user, {message, M}},
     {next_state, plaintext, State};
 plaintext({user, {message, M}}, State) ->
     emit_net(State, {plain, M}),
-    {next_state, plaintext, State};%}}}F
-%F{{{ plaintext({net
+    {next_state, plaintext, State};
+
 plaintext({net, {plain, M}}, State) ->
     emit_user(State, {message, M, []}),
     {next_state, plaintext, State};
@@ -80,11 +80,11 @@ plaintext({net, {error, {encoded_m, _}}}, State) ->
     emit_user(State, {error, malformed_message_received}),
     {next_state, plaintext, State};
 plaintext({net, M}, State) ->
-    handle_ake_message(M, plaintext, State).  %}}}F
+    handle_ake_message(M, plaintext, State).  
 
 encrypted({ake, {encrypted, TheirKM}}, State) ->
     {next_state, encrypted, ake_completed(State, TheirKM)};
-%F{{{ encrypted({smp...
+
 encrypted({smp, user_abort}, State) ->
     {ok, {emit, E}} = otr_smp_fsm:user_abort(State#s.smp),
     {next_state, encrypted,
@@ -126,8 +126,8 @@ encrypted({smp, {user_secret, Secret}},
 	  {next_state, encrypted,
 	   send_data_msg(State, {[], E, 0})}
     end;
-%}}}F
-%F{{{ encrypted({user
+
+
 encrypted({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
     {next_state, encrypted, State};
@@ -141,8 +141,8 @@ encrypted({user, stop_otr}, State) ->
 encrypted({user, {message, M}}, State) ->
     NState = send_data_msg(State, {M, [], 0}),
     %TODO: store the plaintext for possible retransmission
-    {next_state, encrypted, NState};  %}}}F
-%F{{{ encrypted({net
+    {next_state, encrypted, NState};  
+
 encrypted({net, {error, {encoded_m, _}}}, State) ->
     emit_user(State, {error, malformed_message_received}),
     {next_state, encrypted, State};
@@ -157,11 +157,11 @@ encrypted({net, #otr_msg_data{} = M}, State) ->
     NState = heartbeat(State),
     handle_data_message(NState, M);
 encrypted({net, M}, State) ->
-    handle_ake_message(M, encrypted, State).%}}}F
+    handle_ake_message(M, encrypted, State).
 
 finished({ake, {encrypted, TheirKM}}, State) ->
     {next_state, encrypted, ake_completed(State, TheirKM)};
-%F{{{ finished({user ...
+
 finished({user, start_otr}, State) ->
     emit_net(State, otr_msg_query),
     {next_state, encrypted, State};
@@ -172,8 +172,8 @@ finished({user, {message, M}}, State) ->
     emit_user(State,
 	      {info, message_can_not_be_sent_this_time}),
     {next_state, finished,
-     State#s{pt = [M | State#s.pt]}};  %}}}F
-%F{{{ finished({net
+     State#s{pt = [M | State#s.pt]}};  
+
 finished({net, {error, {encoded_m, _}}}, State) ->
     emit_user(State, {error, malformed_message_received}),
     {next_state, finished, State};
@@ -191,11 +191,11 @@ finished({net, #otr_msg_data{}}, State) ->
 	     #otr_msg_error{s = ?ERR_MSG_UNEXPECTED}),
     {next_state, finished, State};
 finished({net, M}, State) ->
-    handle_ake_message(M, finished, State).%}}}F
+    handle_ake_message(M, finished, State).
 
-%}}}F
 
-%F{{{ gen_fsm callbacks
+
+
 
 init(Opts) ->
     State = #s{emit_user =
@@ -237,9 +237,9 @@ terminate(_Reason, _StateName, _State) -> ok.
 code_change(_OldVsn, StateName, StateData, _Extra) ->
     {ok, StateName, StateData}.
 
-%}}}F
 
-%F{{{ internal functions
+
+
 
 handle_data_message(State, M) ->
     case otr_mcgs:decrypt(State#s.mcgs, M) of
@@ -256,7 +256,7 @@ handle_data_message(State, M) ->
 	  {next_state, encrypted, State}
     end.
 
-%F{{{ heartbeat/1
+
 
 heartbeat(#s{heartbeat_timeout = infinity} = State) ->
     State;
@@ -271,7 +271,7 @@ heartbeat(State) ->
       false -> State
     end.
 
-%}}}F
+
 
 enter_finished(State) ->
     emit_user(State, {info, finished}),
@@ -283,7 +283,7 @@ enter_finished(State) ->
     {next_state, finished,
      State#s{mcgs = Mcgs, smp = undefined}}.
 
-%F{{{ handle_tlv/2
+
 
 handle_tlv(State, error) ->
     emit_user(State, {info, error_in_tlv}),
@@ -299,7 +299,7 @@ handle_tlv(State, TLV) ->
 handle_tlv_1({padding, _}) -> false;
 handle_tlv_1(_) -> true.
 
-%}}}F
+
 
 handle_smp(State, []) -> State;
 handle_smp(State, [X | Rest]) ->
@@ -345,7 +345,7 @@ send_data_msg(State, {M, TLV, Flags}) ->
     emit_net(State, EncM),
     State#s{last_data_msg = now()}.
 
-%F{{{ handle_ake_message/3
+
 handle_ake_message(otr_msg_query, StateName, State) ->
     {ok, Ake} = init_ake(State),
     otr_ake_fsm:consume(Ake, {cmd, start}),
@@ -375,7 +375,7 @@ handle_ake_message(#otr_msg_signature{}, StateName,
 handle_ake_message(#otr_msg_signature{} = M, StateName,
 		   #s{ake = Ake} = State) ->
     otr_ake_fsm:consume(Ake, M),
-    {next_state, StateName, State#s{ake = Ake}}.%}}}F
+    {next_state, StateName, State#s{ake = Ake}}.
 
 handle_tagged_ws_message(StateName,
 			 #s{whitespace_start_ake = true} = State, M) ->
@@ -460,5 +460,5 @@ emit_net(#s{emit_net = F, max_fragment_size = FSz},
       {fragmented, FL} -> lists:foreach(F, FL)
     end.
 
-%}}}F
+
 
