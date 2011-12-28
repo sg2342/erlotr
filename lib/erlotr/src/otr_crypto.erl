@@ -3,7 +3,8 @@
 % the crypto application.
 %
 % some crypto primitives needed by the OTR application are not part
-% of the crypto application. these are implemented here.
+% of the crypto application. these are implemented here and in the crypto_aux
+% application.
 %
 
 -module(otr_crypto).
@@ -53,14 +54,14 @@ sha1(Data, Offset, Length)
     crypto:sha(Part).
 
 
-sha256(Data) -> crypto:sha256(Data).
+sha256(Data) -> crypto_aux:sha256(Data).
 
 sha256(Data, Offset, Length)
     when is_binary(Data), Offset > 0, Length > 0,
 	 size(Data) - (Offset + Length) > 0 ->
     <<_:Offset/binary, Part:Length/binary, _/binary>> =
 	Data,
-    crypto:sha256(Part).
+    crypto_aux:sha256(Part).
 
 
 aes_ctr_128_decrypt(Key, Nonce, Data) ->
