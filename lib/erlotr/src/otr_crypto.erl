@@ -125,7 +125,7 @@ dsa_verify(_PublicKey = [P, Q, G, Y], Data, {R0, S0}) ->
 
 dsa_fingerprint([P, Q, G, _, Y]) -> dsa_fingerprint([P, Q, G, Y]);
 dsa_fingerprint([P, Q, G, Y]) ->
-    otr_crypto:sha1(concat_binary([otr_util:mpint(V)
+    otr_crypto:sha1(list_to_binary([otr_util:mpint(V)
 				     || V <- [P, Q, G, Y]])).
 
 
