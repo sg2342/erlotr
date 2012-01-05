@@ -2,10 +2,6 @@
 % this module is mostly just a wrapper around crypto primitives provided by
 % the crypto application.
 %
-% some crypto primitives needed by the OTR application are not part
-% of the crypto application. these are implemented here and in the crypto_aux
-% application.
-%
 
 -module(otr_crypto).
 
@@ -17,7 +13,7 @@
 
 -export([dh_agree/2, dh_gen_key/0]).
 
--export([dsa_sign/2, dsa_verify/3, dsa_fingerprint/1]).
+-export([dsa_fingerprint/1, dsa_sign/2, dsa_verify/3]).
 
 -export([sha1/1, sha1/3, sha1HMAC/2, sha256/1, sha256/3,
 	 sha256HMAC/2]).
@@ -25,7 +21,6 @@
 -export([mod/2, mod_exp/3, mod_inv/2]).
 
 -export([rand_bytes/1, rand_int/1]).
-
 
 sha1HMAC(Key, Data) -> crypto:sha_mac(Key, Data).
 
@@ -43,7 +38,6 @@ sha256HMAC(Key, Data) ->
     H1 = sha256(<<KxorIpad/binary, Data/binary>>),
     sha256(<<KxorOpad/binary, H1/binary>>).
 
-
 sha1(Data) -> crypto:sha(Data).
 
 sha1(Data, Offset, Length)
@@ -53,16 +47,14 @@ sha1(Data, Offset, Length)
 	Data,
     crypto:sha(Part).
 
-
-sha256(Data) -> crypto_aux:sha256(Data).
+sha256(Data) -> crypto:sha256(Data).
 
 sha256(Data, Offset, Length)
     when is_binary(Data), Offset > 0, Length > 0,
 	 size(Data) - (Offset + Length) > 0 ->
     <<_:Offset/binary, Part:Length/binary, _/binary>> =
 	Data,
-    crypto_aux:sha256(Part).
-
+    crypto:sha256(Part).
 
 aes_ctr_128_decrypt(Key, Nonce, Data) ->
     aes_ctr_128_encrypt(Key, Nonce, Data).
@@ -95,9 +87,6 @@ do_aes_ctr_128(Key, {Nonce, Counter}, Plaintext,
     do_aes_ctr_128(Key, {Nonce, Counter + 1}, Tail,
 		   <<Ciphertext/binary, CtBlock/binary>>).
 
-
-
-
 %
 % stolen from ssh-1.1.6/src/ssh_dsa.erl
 
@@ -123,15 +112,11 @@ dsa_verify(_PublicKey = [P, Q, G, Y], Data, {R0, S0}) ->
     V = T1 * T2 rem P rem Q,
     V == R0.
 
-dsa_fingerprint([P, Q, G, _, Y]) -> dsa_fingerprint([P, Q, G, Y]);
+dsa_fingerprint([P, Q, G, _, Y]) ->
+    dsa_fingerprint([P, Q, G, Y]);
 dsa_fingerprint([P, Q, G, Y]) ->
     otr_crypto:sha1(list_to_binary([otr_util:mpint(V)
-				     || V <- [P, Q, G, Y]])).
-
-
-
-
-
+				    || V <- [P, Q, G, Y]])).
 
 dh_gen_key() ->
     P = (?DH_MODULUS),
@@ -145,8 +130,6 @@ dh_gen_key() ->
 
 dh_agree(Private, PeerPub) ->
     mod_exp(PeerPub, Private, ?DH_MODULUS).
-
-
 
 mod(X, P) when X >= 0 -> X rem P;
 mod(X, P) when X < 0 -> P + X rem P.

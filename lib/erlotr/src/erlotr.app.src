@@ -17,6 +17,6 @@
 	       otr_smp_fsm,
                otr_tlv]},
     {registered, [otr_sup]},
-    {applications, [kernel, stdlib, crypto, crypto_aux]},
+    {applications, [kernel, stdlib, crypto]},
     {mod, {otr_app, []}}
 ]}.

@@ -1,8 +1,0 @@
-{application, crypto_aux,
-    [{description, "auxiliary crypto functions"},
-     {vsn, "%VSN%"},
-     {modules, [crypto_aux]},
-     {registered, []},
-     {applications, [kernel, stdlib]},
-     {env, []}
-     ]}.
